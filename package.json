@@ -1,0 +1,11 @@
+{
+  "name": "desk-clock",
+  "version": "1.0.0",
+  "main": "preload.js",
+  "devDependencies": {
+    "utools-api-types": "^6.1.0"
+  },
+  "description": "高效的时间管理工具，帮助你合理安排每天的时间",
+  "author": "YeZhui",
+  "license": "MIT"
+}

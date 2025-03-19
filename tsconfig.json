@@ -1,0 +1,9 @@
+{
+  "compilerOptions": {
+    "types": ["utools-api-types"],
+    "allowJs": true,
+    "checkJs": false
+  },
+  "include": ["**/*.ts", "**/*.tsx", "**/*.js"],
+  "exclude": ["node_modules"]
+}

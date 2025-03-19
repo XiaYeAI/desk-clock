@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>桌面闹钟</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="app">
+    <h2>桌面闹钟</h2>
+    <div class="tabs">
+      <button class="tab-button active" onclick="switchTab('timeline')">时间轴</button>
+      <button class="tab-button" onclick="switchTab('input')">创建时间块</button>
+      <button class="tab-button" onclick="switchTab('avatar')">头像设置</button>
+    </div>
+
+    <div id="timeline-tab" class="tab-content active">
+      <div class="timeline">
+        <div class="timeline-blocks" id="timeline-blocks"></div>
+      </div>
+      <div id="current-task" class="current-task">当前无任务</div>
+    </div>
+
+    <div id="input-tab" class="tab-content">
+      <div class="input-container">
+        <div class="form-input">
+          <label>任务名称</label>
+          <input type="text" id="task-name" placeholder="输入任务名称">
+        </div>
+        <div class="form-input">
+          <label>时间点</label>
+          <input type="time" id="task-time" value="09:00">
+        </div>
+        <div class="form-input">
+          <label>启用状态</label>
+          <select id="task-enabled">
+            <option value="true">启用</option>
+            <option value="false">禁用</option>
+          </select>
+        </div>
+        <div class="form-actions" style="margin-top: 15px;">
+          <button class="alert-button primary" onclick="handleFormSubmit()">保存</button>
+        </div>
+        <div class="time-block-list" id="time-block-list"></div>
+      </div>
+    </div>
+
+    <div id="avatar-tab" class="tab-content">
+      <div class="input-container">
+        <div class="avatar-preview" style="margin-top: 15px; text-align: center;">
+          <img id="avatarPreview" src="./logo.svg" style="width: 100px; height: 100px; border-radius: 50%; object-fit: cover;">
+        </div>
+        <div class="form-actions" style="margin-top: 15px;">
+          <button class="alert-button primary" onclick="window.handleAvatarUpload()">选择头像</button>
+        </div>
+      </div>
+    </div>
+    
+    
+  </div>
+
+  <div class="alert-overlay" id="alert-overlay">
+    <div class="alert-content">
+      <h3 id="alert-title"></h3>
+      <p id="alert-message"></p>
+      <div class="alert-actions">
+        <button class="alert-button primary" onclick="handleAlertAction('complete')">完成</button>
+        <button class="alert-button secondary" onclick="handleAlertAction('delay')">延迟10分钟</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="side-alert" id="side-alert">
+    <p id="side-alert-message"></p>
+  </div>
+
+
+
+  <script>
+    // 显示表单提示
+    function showFormAlert(title, message) {
+      const overlay = document.getElementById('alert-overlay');
+      const alertTitle = document.getElementById('alert-title');
+      const alertMessage = document.getElementById('alert-message');
+      const alertActions = document.querySelector('.alert-actions');
+      
+      alertTitle.textContent = title;
+      alertMessage.textContent = message;
+      
+      // 修改按钮
+      alertActions.innerHTML = `
+        <button class="alert-button primary" onclick="document.getElementById('alert-overlay').style.display = 'none'">确定</button>
+      `;
+      
+      overlay.style.display = 'flex';
+    }
+
+    // 切换标签页
+    function switchTab(tabId) {
+      document.querySelectorAll('.tab-content').forEach(tab => {
+        tab.classList.remove('active');
+      });
+      document.querySelectorAll('.tab-button').forEach(btn => {
+        btn.classList.remove('active');
+      });
+      document.getElementById(`${tabId}-tab`).classList.add('active');
+      document.querySelector(`.tab-button[onclick="switchTab('${tabId}')"]`).classList.add('active');
+    }
+
+
+
+    // 渲染时间轴
+    function renderTimeline() {
+      const container = document.getElementById('timeline-blocks');
+      const timeBlocks = window.getTimeSettings();
+      container.innerHTML = '';
+      
+      // 按时间排序
+      timeBlocks.sort((a, b) => {
+        const timeA = new Date(a.startTime);
+        const timeB = new Date(b.startTime);
+        return timeA.getTime() - timeB.getTime();
+      });
+      
+      timeBlocks.forEach(block => {
+        const blockStartTime = new Date(block.startTime);
+        const blockEl = document.createElement('div');
+        blockEl.className = 'timeline-block';
+        blockEl.style.background = block.color;
+        blockEl.style.margin = '10px 0';
+        blockEl.style.padding = '10px';
+        blockEl.style.borderRadius = '4px';
+        blockEl.style.cursor = 'pointer';
+        
+        // 显示时间和任务名称
+        const timeStr = blockStartTime.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+        blockEl.innerHTML = `
+          <div style="font-weight: bold; font-size: 16px">${timeStr}</div>
+          <div style="margin: 5px 0">${block.task}</div>
+          <div style="font-size: 12px; color: #666">${block.enabled ? '已启用' : '已禁用'}</div>
+        `;
+        
+        // 根据状态设置样式
+        if (!block.enabled) {
+          blockEl.style.opacity = '0.5';
+        }
+        
+        blockEl.onclick = () => {
+          console.log('时间块点击事件触发:', block);
+          window.alertManager.startTimeBlock(block);
+        };
+
+        container.appendChild(blockEl);
+      });
+    }
+
+    // 处理提醒操作
+    function handleAlertAction(action) {
+      window.alertManager.handleAction(action);
+      renderTimeline();
+    }
+
+
+
+    
+
+    // 渲染时间块列表
+    function renderTimeBlockList() {
+      const container = document.getElementById('time-block-list');
+      const timeBlocks = window.getTimeSettings();
+      
+      container.innerHTML = timeBlocks.map(block => {
+        const date = new Date(block.startTime);
+        const timeStr = `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
+        
+        return `
+          <div class="time-block-item" data-id="${block.id}">
+            <div class="time-block-info">
+              <div class="time-block-color" style="background: ${block.color}"></div>
+              <div class="time-block-details">
+                <strong>${block.task}</strong>
+                <span>${timeStr}</span>
+                <span class="status-indicator">${block.enabled ? '已启用' : '已禁用'}</span>
+              </div>
+            </div>
+            <div class="time-block-actions">
+              <button class="edit" onclick="editTimeBlock('${block.id}')">编辑</button>
+              <button class="delete" onclick="removeTimeBlock('${block.id}')">删除</button>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    // 编辑时间块
+    function editTimeBlock(id) {
+      const timeBlocks = window.getTimeSettings();
+      const block = timeBlocks.find(b => b.id === id);
+      if (!block) return;
+
+      const date = new Date(block.startTime);
+      const timeStr = `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
+
+      document.getElementById('task-name').value = block.task;
+      document.getElementById('task-time').value = timeStr;
+      window.currentEditingBlockId = id;
+      
+      // 切换到表单输入模式
+      switchTab('input');
+    }
+
+    // 删除时间块
+    function removeTimeBlock(id) {
+      // 删除数据并更新界面
+      window.deleteTimeBlock(id);
+      
+      // 更新界面
+      renderTimeBlockList();
+      renderTimeline();
+      
+      // 清空表单
+      window.currentEditingBlockId = null;
+      const taskNameInput = document.getElementById('task-name');
+      const taskTimeInput = document.getElementById('task-time');
+      
+      if (taskNameInput) taskNameInput.value = '';
+      if (taskTimeInput) taskTimeInput.value = '09:00';
+    }
+
+    // 处理可视化表单提交
+    function handleFormSubmit() {
+      const taskName = document.getElementById('task-name').value.trim();
+      const taskTime = document.getElementById('task-time').value.trim();
+      const enabled = document.getElementById('task-enabled').value === 'true';
+
+      // 表单验证
+      if (!taskName) {
+        alert('请输入任务名称');
+        return;
+      }
+      if (!taskTime || !/^\d{1,2}:\d{2}$/.test(taskTime)) {
+        alert('请输入正确的时间格式（如：09:00）');
+        return;
+      }
+
+      const [hours, minutes] = taskTime.split(':').map(Number);
+      if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) {
+        alert('请输入有效的时间范围（00:00-23:59）');
+        return;
+      }
+
+      const blocks = window.getTimeSettings();
+      const newBlock = {
+        task: taskName,
+        startTime: new Date().setHours(hours, minutes, 0, 0),
+        enabled,
+        color: getRandomColor()
+      };
+
+      if (window.currentEditingBlockId) {
+        // 更新现有时间块
+        if (window.updateTimeBlock(window.currentEditingBlockId, newBlock)) {
+          window.currentEditingBlockId = null;
+        }
+      } else {
+        // 添加新时间块
+        blocks.push(newBlock);
+        window.saveTimeSettings(blocks);
+      }
+
+      renderTimeline();
+      renderTimeBlockList();
+      document.getElementById('task-name').value = '';
+      document.getElementById('task-time').value = '09:00';
+    }
+
+
+
+    // 获取随机颜色
+    function getRandomColor() {
+      const colors = ['#1890ff', '#52c41a', '#faad14', '#f5222d', '#722ed1'];
+      return colors[Math.floor(Math.random() * colors.length)];
+    }
+
+    // 初始化
+    document.addEventListener('DOMContentLoaded', () => {
+      // 添加调试信息
+      console.log('DOM加载完成');
+      console.log('getTimeSettings存在:', !!window.getTimeSettings);
+      console.log('alertManager存在:', !!window.alertManager);
+      
+      // 检查是否在uTools环境中
+      const isInUTools = window.utools !== undefined;
+      console.log('是否在uTools环境中:', isInUTools);
+      
+      // 如果不在uTools环境中，提供模拟数据用于测试
+      if (!isInUTools) {
+        console.log('非uTools环境，使用模拟数据');
+        window.getTimeSettings = window.getTimeSettings || function() {
+          return [
+            {
+              task: '测试任务1',
+              startTime: new Date().setHours(10, 0, 0, 0),
+              color: '#1890ff',
+              enabled: true,
+              status: 'pending',
+              duration: 30,
+              id: 'test1'
+            },
+            {
+              task: '测试任务2',
+              startTime: new Date().setHours(14, 0, 0, 0),
+              color: '#52c41a',
+              enabled: true,
+              status: 'pending',
+              duration: 45,
+              id: 'test2'
+            }
+          ];
+        };
+        
+        window.alertManager = window.alertManager || {
+          startTimeBlock: function(block) {
+            alert('开始任务: ' + block.task);
+          },
+          handleAction: function(action) {
+            console.log('执行操作:', action);
+          }
+        };
+      }
+      
+      if (window.getTimeSettings && window.alertManager) {
+        renderTimeline();
+        renderTimeBlockList();
+        setInterval(renderTimeline, 60000);
+        setInterval(renderTimeBlockList, 60000);
+      } else {
+        console.error('初始化失败: getTimeSettings或alertManager未定义');
+      }
+    });
+  </script>
+</body>
+</html>
