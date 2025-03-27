@@ -3,34 +3,120 @@ const { exec } = require('child_process');
 
 const TIME_BLOCKS_KEY = 'timeBlocks';
 
-// 初始化存储
+// 初始化存储、主题和头像
 function initStorage() {
+  // 初始化时间块存储
   if (!window.utools.dbStorage.getItem(TIME_BLOCKS_KEY)) {
     window.utools.dbStorage.setItem(TIME_BLOCKS_KEY, []);
   }
+  
+  // 初始化全局参数
+  let globalSettings = window.utools.dbStorage.getItem('globalSettings');
+  if (!globalSettings) {
+    globalSettings = {
+      preAlertTime: 3,
+      preAlertCount: 1,
+      globalAlertEnabled: true
+    };
+    window.utools.dbStorage.setItem('globalSettings', globalSettings);
+  }
+  
+  // 初始化头像配置
+  if (!window.utools.dbStorage.getItem('globalConfig')) {
+    window.utools.dbStorage.setItem('globalConfig', JSON.stringify({ avatar: path.join(window.utools.getPath('userData'), 'touxiang.png') }));
+  }
+  window.globalConfig = JSON.parse(window.utools.dbStorage.getItem('globalConfig') || '{}');
 }
 
-// 导出到window对象供渲染进程使用
-window.exports = {
-  'desk-clock': {
-    mode: 'none',
-    args: {
-      enter: () => {
-        initStorage();
-        document.getElementById('app').style.display = 'block';
+// 初始化UI和主题
+function initUIAndTheme() {
+  // 更新UI显示
+  const settings = window.utools.dbStorage.getItem('globalSettings');
+  const preAlertTimeInput = document.getElementById('pre-alert-time');
+  const preAlertCountInput = document.getElementById('pre-alert-count');
+  const globalAlertToggle = document.getElementById('global-alert-toggle');
+  if (preAlertTimeInput && preAlertCountInput && globalAlertToggle) {
+    preAlertTimeInput.value = settings.preAlertTime;
+    preAlertCountInput.value = settings.preAlertCount;
+    globalAlertToggle.value = settings.globalAlertEnabled ? 'true' : 'false';
+  }
+  
+  // 设置初始主题
+  const isDarkMode = window.utools.isDarkColors();
+  document.documentElement.setAttribute('theme', isDarkMode ? 'dark' : 'light');
+  
+  // 每次插件进入时统一处理主题同步、窗口显示和时间线渲染
+  window.utools.onPluginEnter(({ code, type, payload }) => {
+    // 同步主题
+    const isDarkMode = window.utools.isDarkColors();
+    document.documentElement.setAttribute('theme', isDarkMode ? 'dark' : 'light');
+    
+    // 显示主窗口
+    const appElement = document.getElementById('app');
+    if (appElement) {
+      appElement.style.display = 'block';
+      window.utools.showMainWindow();
+    }
+    
+    // 更新时间线和时间块列表
+    if (typeof renderTimeline === 'function') renderTimeline();
+    if (typeof renderTimeBlockList === 'function') renderTimeBlockList();
+  });
+
+  // 检查并设置头像
+  const fs = require('fs');
+  const path = require('path');
+  const avatarPath = path.join(window.utools.getPath('userData'), 'touxiang.png');
+  const defaultAvatarPath = './logo.svg';
+  
+  // 等待一段时间确保CSS样式已加载
+  setTimeout(() => {
+    try {
+      if (fs.existsSync(avatarPath)) {
+        const avatarPreview = document.getElementById('avatarPreview');
+        if (avatarPreview) {
+          avatarPreview.src = `file://${avatarPath}?t=${new Date().getTime()}`;
+          console.log('[头像] 成功加载touxiang.png');
+        }
+      } else {
+        console.log('[头像] touxiang.png不存在，使用默认头像');
+        const avatarPreview = document.getElementById('avatarPreview');
+        if (avatarPreview) {
+          avatarPreview.src = defaultAvatarPath;
+        }
+      }
+    } catch (error) {
+      console.error('[头像] 检查头像文件时出错:', error);
+      const avatarPreview = document.getElementById('avatarPreview');
+      if (avatarPreview) {
+        avatarPreview.src = defaultAvatarPath;
       }
     }
+  }, 100);
+}
+
+// 在插件加载时初始化存储
+initStorage();
+
+// 在DOM加载完成后初始化UI和主题
+document.addEventListener('DOMContentLoaded', () => {
+  initUIAndTheme();
+  // 显示主窗口
+  const appElement = document.getElementById('app');
+  if (appElement) {
+    appElement.style.display = 'block';
   }
-};
+});
 
 // 时间块管理
 window.saveTimeSettings = (blocks) => {
-  // 确保每个时间块都有唯一ID、创建时间和状态
+  // 确保每个时间块都有唯一ID、创建时间、状态和预提醒设置
   const updatedBlocks = blocks.map(block => ({
     ...block,
     id: block.id || Date.now().toString(36) + Math.random().toString(36).substr(2),
     createdAt: block.createdAt || Date.now(),
-    status: block.status || 'pending'
+    status: block.status || 'pending',
+    preAlert: block.preAlert !== undefined ? block.preAlert : false
   }));
   window.utools.dbStorage.setItem(TIME_BLOCKS_KEY, updatedBlocks);
   window.alertManager.updateTimeBlocks();
@@ -88,8 +174,12 @@ window.sendNotification = (title, body) => {
     // 预处理通知内容
     const safeTitle = String(title).replace(/[\\"']/g, '');
     const safeBody = String(body).replace(/[\\"']/g, '');
-    const avatarUrl = './touxiang.png';
-
+    const avatarUrl11 = window.getGlobalAvatar();
+    const rawAvatarPath = window.getGlobalAvatar();
+    //const encodedAvatarPath = encodeURIComponent(rawAvatarPath.replace(/\\/g, '/'));
+    encodedAvatarPath = rawAvatarPath.replace(/\\/g, '/');
+    const avatarUrl = `file:///${encodedAvatarPath}?t=${new Date().getTime()}`;
+    console.log('[通知] 处理后的头像URL:', avatarUrl);
     // 显示窗口并设置置顶
     win.show();
     win.setAlwaysOnTop(true);
@@ -169,228 +259,31 @@ window.hideWindow = () => {
   window.utools.hideMainWindow(); // 隐藏主窗口
 };
 
-// 监听窗口显示事件
-window.utools.onPluginEnter(({ code, type, payload }) => {
-  document.getElementById('app').style.display = 'block';
-  window.utools.showMainWindow(); // 显示主窗口
+
+
+// 插件准备就绪时初始化显示
+window.utools.onPluginReady(() => {
+  const appElement = document.getElementById('app');
+  if (appElement) {
+    appElement.style.display = 'block';
+  }
 });
 
-// 自然语言解析器
-// 处理头像上传
-window.handleAvatarUpload = () => {
-  window.utools.showOpenDialog({
-    filters: [{ name: 'Images', extensions: ['jpg', 'jpeg', 'png', 'gif'] }],
-    properties: ['openFile']
-  }).then(result => {
-    if (result && result.length > 0) {
-      const filePath = result[0];
-      const fs = require('fs');
-      const imageData = fs.readFileSync(filePath, { encoding: 'base64' });
-      const dataUrl = `data:image/png;base64,${imageData}`;
-      document.getElementById('avatarPreview').src = dataUrl;
-      window.utools.dbStorage.setItem('globalAvatar', dataUrl);
-    }
+// 处理预提醒时间变更
+window.handlePreAlertTimeChange = () => {
+  const preAlertTime = parseInt(document.getElementById('pre-alert-time').value);
+  const preAlertCount = preAlertTime > 3 ? 2 : 1;
+  const globalAlertEnabled = document.getElementById('global-alert-toggle').value === 'true';
+  
+  // 更新UI和存储
+  document.getElementById('pre-alert-count').value = preAlertCount;
+  window.utools.dbStorage.setItem('globalSettings', {
+    preAlertTime,
+    preAlertCount,
+    globalAlertEnabled
   });
 };
-
-// 初始化全局配置
-window.initStorage = () => {
-  if (!window.utools.dbStorage.getItem('globalConfig')) {
-    window.utools.dbStorage.setItem('globalConfig', JSON.stringify({ avatar: '' }));
-  }
-  window.globalConfig = JSON.parse(window.utools.dbStorage.getItem('globalConfig'));
-};
-
-window.parseTimeBlock = (text) => {
-  const timePointPattern = /(\d{1,2}:\d{2})\s*([\p{Script=Han}a-zA-Z]+)/gu;
-  const blocks = [];
-  let match;
-
-  // 解析时间点格式（如：09:00 写周报）
-  for (const match of text.matchAll(timePointPattern)) {
-    const [_, timeStr, task] = match;
-    const [hours, minutes] = timeStr.split(':').map(Number);
-    const taskTime = new Date();
-    taskTime.setHours(hours, minutes, 0, 0);
-
-    // 如果设置的时间已经过去，则设置为明天
-    if (taskTime < new Date()) {
-      taskTime.setDate(taskTime.getDate() + 1);
-    }
-
-    blocks.push({
-      task,
-      startTime: taskTime.getTime(),
-      color: getRandomColor(),
-      enabled: true,
-      status: 'pending'
-    });
-  }
-  return blocks;
-};
-
-// 生成随机颜色
-function getRandomColor() {
-  const colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEEAD', '#D4A5A5', '#9B59B6', '#3498DB'];
-  return colors[Math.floor(Math.random() * colors.length)];
-}
-
-// 提醒系统状态机
-const AlertState = {
-  IDLE: 'idle',
-  RUNNING: 'running',
-  PRE_ALERT: 'pre_alert',
-  ALERTING: 'alerting',
-  PAUSED: 'paused',
-  COMPLETED: 'completed'
-};
-
-// 全局状态变量
-const lastAlertDates = new Map();
-const lastNotificationTimes = new Map();
-const lastPreAlertTimes = new Map();
-const lastRemainingMinutes = new Map();
-
-class AlertManager {
-  constructor() {
-    this.state = AlertState.IDLE;
-    this.timeBlocks = window.getTimeSettings();
-    this.timer = null;
-    this.startGlobalTimer();
-  }
-
-  updateTimeBlocks() {
-    this.timeBlocks = window.getTimeSettings();
-    //this.currentBlock = this.timeBlocks.find(b => b.status === 'active');
-    //this.currentAvatar = window.getGlobalAvatar() || './logo.svg';
-    
-    // 重置修改过的时间块的提醒状态
-    this.timeBlocks.forEach(block => {
-      lastAlertDates.delete(block.id);
-      lastNotificationTimes.delete(block.id);
-      lastPreAlertTimes.delete(block.id);
-      lastRemainingMinutes.delete(block.id);
-    });
-    
-    console.log('[AlertManager] 时间块数据和提醒状态已更新');
-  }
-
-  startTimeBlock(block) {
-    this.timeBlocks.push(block);
-    if (!this.timer) {
-      this.startGlobalTimer();
-    }
-  }
-
-  startGlobalTimer() {
-    if (this.timer) return;
-    
-    this.timer = setInterval(() => {
-      const now = new Date();
-      const currentHour = now.getHours();
-      const currentMinute = now.getMinutes();
-      const currentTime = now.getTime();
-
-      console.log(`[时间检查] 当前时间: ${currentHour}:${currentMinute}`);
-      this.timeBlocks = window.getTimeSettings();
-      let hasUpdates = false;
-
-      this.timeBlocks.forEach((block, index) => {
-        //console.log(`[时间检查] 循环时间块: ${block.task}${block.enabled}, 当前状态: ${block.status}`);
-        if (!block.enabled || block.status !== 'pending') return;
-        
-        const blockTime = new Date(block.startTime);
-        const blockHour = blockTime.getHours();
-        const blockMinute = blockTime.getMinutes();
-        console.log(`[时间检查] 检查时间块: ${block.task}, 预定时间: ${blockHour}:${blockMinute}`);
-
-        if (currentHour === blockHour && currentMinute === blockMinute) {
-          // 检查是否今天已经提醒过，并确保至少间隔30秒
-          const today = new Date().setHours(0, 0, 0, 0);
-          const lastNotificationTime = lastNotificationTimes.get(block.id) || 0;
-          const lastAlertDate = lastAlertDates.get(block.id);
-          
-          if (lastAlertDate !== today && currentTime - lastNotificationTime >= 10000) {
-            console.log(`[时间检查] 触发主提醒: ${block.task}`);
-            this.showAlert(block);
-            lastAlertDates.set(block.id, today);
-            lastNotificationTimes.set(block.id, currentTime);
-            // 重置时间块状态，设置为明天同一时间
-            const tomorrow = new Date(blockTime);
-            tomorrow.setDate(tomorrow.getDate() + 1);
-            block.startTime = tomorrow.getTime();
-            block.status = 'pending';
-            // 重置上一次剩余分钟数
-            lastRemainingMinutes.delete(block.id);
-            hasUpdates = true;
-            console.log(`[时间检查] 重置时间块到明天: ${block.task}, 时间: ${tomorrow.getHours()}:${tomorrow.getMinutes()}`);
-          } else {
-            console.log(`[时间检查] 今天已经提醒过或间隔太短: ${block.task}，跳过提醒`);
-          }
-        } else if (currentHour === blockHour && blockMinute - currentMinute <= 5 && blockMinute - currentMinute > 0) {
-          const remainingMinutes = blockMinute - currentMinute;
-          const lastPreAlertTime = lastPreAlertTimes.get(block.id) || 0;
-          const lastRemaining = lastRemainingMinutes.get(block.id);
-          
-          // 确保预提醒至少间隔60秒
-          if (lastRemaining !== remainingMinutes && currentTime - lastPreAlertTime >= 60000) {
-            console.log(`[时间检查] 触发预提醒: ${block.task}, 剩余${remainingMinutes}分钟`);
-            this.showSideAlert(block, remainingMinutes);
-            lastRemainingMinutes.set(block.id, remainingMinutes);
-            lastPreAlertTimes.set(block.id, currentTime);
-            hasUpdates = true;
-          }
-        }
-      });
-    }, 5000);
-  }
-
-  showSideAlert(block, remainingMinutes) {
-    console.log(`[预提醒] 显示预提醒: ${block.task}, 剩余${remainingMinutes}分钟`);
-    window.sendNotification(
-      `${block.task}`,
-      `还剩${remainingMinutes}分钟`
-    );
-  }
-
-  showAlert(block) {
-    console.log(`[主提醒] 显示主提醒: ${block.task}`);
-    
-    // 发送系统通知
-    window.sendNotification(
-      block.task,
-      '时间到！'
-    );
-  }
-
-  handleAction(action) {
-    if (action === 'complete') {
-      this.state = AlertState.COMPLETED;
-      this.currentBlock.status = 'completed';
-      this.cleanup();
-    } else if (action === 'delay') {
-      this.state = AlertState.PAUSED;
-      setTimeout(() => {
-        this.state = AlertState.RUNNING;
-        this.startTimer();
-      }, 600000); // 10分钟后重新开始
-    }
-  }
-
-  cleanup() {
-    if (this.timer) clearInterval(this.timer);
-    this.timer = null;
-    document.getElementById('side-alert').style.display = 'none';
-    document.getElementById('alert-overlay').style.display = 'none';
-  }
-}
-
-window.alertManager = new AlertManager();
-
-// 添加头像上传处理
 const fs = require('fs');
-
-// 处理头像上传
 window.handleAvatarUpload = () => {
   const result = utools.showOpenDialog({
     filters: [{ name: '图片', extensions: ['jpg', 'jpeg', 'png', 'gif'] }],
@@ -398,22 +291,211 @@ window.handleAvatarUpload = () => {
   });
   if (result && result.length > 0) {
     const file = result[0];
-    const destPath = path.join(__dirname, 'touxiang.png');
-    fs.copyFileSync(file, destPath);
+    const destPath = path.join(window.utools.getPath('userData'), 'touxiang.png');
+    console.log('[头像上传] 开始复制文件:', {源文件: file, 目标路径: destPath});
+    
+    try {
+      fs.copyFileSync(file, destPath);
+      window.utools.dbStorage.setItem('globalConfig', JSON.stringify({ avatar: destPath }));
+      console.log('[头像上传] 文件复制成功，更新数据库');
+      
+      // 更新预览并添加时间戳参数
+      const timestamp = new Date().getTime();
+      document.getElementById('avatarPreview').src = `${destPath}?t=${timestamp}`;
+      console.log('[头像预览] 已更新预览地址:', `${destPath}?t=${timestamp}`);
+    } catch (error) {
+      console.error('[头像上传] 文件复制失败:', error);
+      window.sendNotification('头像更新失败', error.message);
+    }
   }
 };
 
 // 修改后的保存时间设置方法
-window.globalConfig = {
-  avatarPath: '',
-  ...JSON.parse(window.localStorage.getItem('globalConfig') || '{}')
-};
-
-window.saveGlobalAvatar = (path) => {
-  window.globalConfig.avatarPath = path;
-  window.localStorage.setItem('globalConfig', JSON.stringify(window.globalConfig));
-};
-
+function getRandomColor() {
+    const colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEEAD', '#D4A5A5', '#9B59B6', '#3498DB'];
+    return colors[Math.floor(Math.random() * colors.length)];
+  }
+  
+  // 提醒系统状态机
+  const AlertState = {
+    IDLE: 'idle',
+    RUNNING: 'running',
+    PRE_ALERT: 'pre_alert',
+    ALERTING: 'alerting',
+    PAUSED: 'paused',
+    COMPLETED: 'completed'
+  };
+  
+  // 全局状态变量
+  const lastAlertDates = new Map();
+  const lastNotificationTimes = new Map();
+  const lastPreAlertTimes = new Map();
+  const lastRemainingMinutes = new Map();
+  
+  class AlertManager {
+    constructor() {
+      this.state = AlertState.IDLE;
+      this.timeBlocks = window.getTimeSettings();
+      this.timer = null;
+      this.startGlobalTimer();
+    }
+  
+    updateTimeBlocks() {
+      this.timeBlocks = window.getTimeSettings();
+      //this.currentBlock = this.timeBlocks.find(b => b.status === 'active');
+      //this.currentAvatar = window.getGlobalAvatar() || './logo.svg';
+      
+      // 重置修改过的时间块的提醒状态
+      this.timeBlocks.forEach(block => {
+        lastAlertDates.delete(block.id);
+        lastNotificationTimes.delete(block.id);
+        lastPreAlertTimes.delete(block.id);
+        lastRemainingMinutes.delete(block.id);
+      });
+      
+      console.log('[AlertManager] 时间块数据和提醒状态已更新');
+    }
+  
+    startTimeBlock(block) {
+      this.timeBlocks.push(block);
+      if (!this.timer) {
+        this.startGlobalTimer();
+      }
+    }
+  
+    startGlobalTimer() {
+      if (this.timer) return;
+      
+      this.timer = setInterval(() => {
+        const now = new Date();
+        const currentHour = now.getHours();
+        const currentMinute = now.getMinutes();
+        const currentTime = now.getTime();
+  
+        console.log(`[时间检查] 当前时间: ${currentHour}:${currentMinute}`);
+        this.timeBlocks = window.getTimeSettings();
+        let hasUpdates = false;
+  
+        const settings = window.utools.dbStorage.getItem('globalSettings') || {
+          preAlertTime: 3,
+          preAlertCount: 1,
+          globalAlertEnabled: true
+        };
+        if (!settings || settings.globalAlertEnabled === false) return;
+        
+        this.timeBlocks.forEach((block, index) => {
+          if (!block.enabled || block.status !== 'pending') return;
+          
+          const blockTime = new Date(block.startTime);
+          const blockHour = blockTime.getHours();
+          const blockMinute = blockTime.getMinutes();
+          const totalBlockMinutes = blockHour * 60 + blockMinute;
+          const totalCurrentMinutes = currentHour * 60 + currentMinute;
+          const timeDiff = totalBlockMinutes - totalCurrentMinutes;
+  
+          console.log(`[时间检查] 检查时间块: ${block.task}, 预定时间: ${blockHour}:${blockMinute} 总分钟差: ${timeDiff}`);
+  
+          // 检查预提醒条件
+          if (block.preAlert && timeDiff > 0 && timeDiff <= settings.preAlertTime) {
+            const lastPreAlertTime = lastPreAlertTimes.get(block.id) || 0;
+            const lastRemaining = lastRemainingMinutes.get(block.id);
+            const preAlertInterval = Math.floor(settings.preAlertTime / settings.preAlertCount);
+            
+            if (lastRemaining !== timeDiff && 
+                currentTime - lastPreAlertTime >= preAlertInterval * 60000 && 
+                settings.preAlertCount > lastPreAlertTimes.size) {
+              console.log(`[时间检查] 触发预提醒: ${block.task}, 剩余${timeDiff}分钟`);
+              this.showSideAlert(block, timeDiff);
+              lastRemainingMinutes.set(block.id, timeDiff);
+              lastPreAlertTimes.set(block.id, currentTime);
+              hasUpdates = true;
+            }
+          }
+  
+          // 检查主提醒条件
+          if (currentHour === blockHour && currentMinute === blockMinute) {
+            // 检查是否今天已经提醒过，并确保至少间隔30秒
+            const today = new Date().setHours(0, 0, 0, 0);
+            const lastNotificationTime = lastNotificationTimes.get(block.id) || 0;
+            const lastAlertDate = lastAlertDates.get(block.id);
+            
+            if (lastAlertDate !== today && currentTime - lastNotificationTime >= 10000) {
+              console.log(`[时间检查] 触发主提醒: ${block.task}`);
+              this.showAlert(block);
+              lastAlertDates.set(block.id, today);
+              lastNotificationTimes.set(block.id, currentTime);
+              // 重置时间块状态，设置为明天同一时间
+              const tomorrow = new Date(blockTime);
+              tomorrow.setDate(tomorrow.getDate() + 1);
+              block.startTime = tomorrow.getTime();
+              block.status = 'pending';
+              // 重置上一次剩余分钟数
+              lastRemainingMinutes.delete(block.id);
+              hasUpdates = true;
+              console.log(`[时间检查] 重置时间块到明天: ${block.task}, 时间: ${tomorrow.getHours()}:${tomorrow.getMinutes()}`);
+            } else {
+              console.log(`[时间检查] 今天已经提醒过或间隔太短: ${block.task}，跳过提醒`);
+            }
+  
+          }
+        });
+      }, 5000);
+    }
+  
+    showSideAlert(block, remainingMinutes) {
+      console.log(`[预提醒] 显示预提醒: ${block.task}, 剩余${remainingMinutes}分钟`);
+      window.sendNotification(
+        `${block.task}`,
+        `还剩${remainingMinutes}分钟`
+      );
+    }
+  
+    showAlert(block) {
+      console.log(`[主提醒] 显示主提醒: ${block.task}`);
+      
+      // 发送系统通知
+      window.sendNotification(
+        block.task,
+        '时间到！'
+      );
+    }
+  
+    handleAction(action) {
+      if (action === 'complete') {
+        this.state = AlertState.COMPLETED;
+        this.currentBlock.status = 'completed';
+        this.cleanup();
+      } else if (action === 'delay') {
+        this.state = AlertState.PAUSED;
+        setTimeout(() => {
+          this.state = AlertState.RUNNING;
+          this.startTimer();
+        }, 600000); // 10分钟后重新开始
+      }
+    }
+  
+    cleanup() {
+      if (this.timer) clearInterval(this.timer);
+      this.timer = null;
+      document.getElementById('side-alert').style.display = 'none';
+      document.getElementById('alert-overlay').style.display = 'none';
+    }
+  }
+  
+  window.alertManager = new AlertManager();
+  
+  // 修改后的保存时间设置方法
+  window.globalConfig = {
+    avatarPath: '',
+    ...JSON.parse(window.localStorage.getItem('globalConfig') || '{}')
+  };
+  
+  window.saveGlobalAvatar = (path) => {
+    window.globalConfig.avatarPath = path;
+    window.localStorage.setItem('globalConfig', JSON.stringify(window.globalConfig));
+  };
+  
 window.getGlobalAvatar = () => {
-  return window.globalConfig.avatarPath;
+  const config = JSON.parse(window.utools.dbStorage.getItem('globalConfig') || '{}');
+  return config.avatar || path.join(window.utools.getPath('userData'), 'touxiang.png');
 };

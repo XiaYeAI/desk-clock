@@ -3,7 +3,7 @@
   "description": "高效的时间管理工具，帮助你合理安排每天的时间",
   "author": "YeZhui",
   "main": "index.html",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "logo": "logo.png",
   "preload": "preload.js",
   "features": [

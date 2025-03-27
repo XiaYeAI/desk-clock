@@ -3,13 +3,37 @@
 <head>
   <meta charset="UTF-8">
   <style>
+    :root[theme="light"] {
+      --bg-gradient-start: rgba(255,255,255,0.98);
+      --bg-gradient-end: rgba(245,249,255,0.98);
+      --text-color: #000000;
+      --text-secondary: #4a4a4a;
+      --border-color: #e0e0e0;
+      --hover-bg: #f5f5f5;
+      --hover-border: #d0d0d0;
+      --shadow-color: rgba(0, 0, 0, 0.1);
+      --shadow-color-light: rgba(0, 0, 0, 0.08);
+    }
+
+    :root[theme="dark"] {
+      --bg-gradient-start: rgba(30,30,30,0.98);
+      --bg-gradient-end: rgba(40,44,52,0.98);
+      --text-color: #ffffff;
+      --text-secondary: #b0b0b0;
+      --border-color: #404040;
+      --hover-bg: #2a2a2a;
+      --hover-border: #505050;
+      --shadow-color: rgba(0, 0, 0, 0.3);
+      --shadow-color-light: rgba(0, 0, 0, 0.2);
+    }
+
     body {
       margin: 0;
       padding: 24px;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-      background: linear-gradient(135deg, rgba(255,255,255,0.98) 0%, rgba(245,249,255,0.98) 100%);
+      background: linear-gradient(135deg, var(--bg-gradient-start) 0%, var(--bg-gradient-end) 100%);
       border-radius: 12px;
-      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1), 0 2px 8px rgba(0, 0, 0, 0.08);
+      box-shadow: 0 8px 32px var(--shadow-color), 0 2px 8px var(--shadow-color-light);
       overflow: hidden;
       animation: fadeIn 0.4s cubic-bezier(0.22, 1, 0.36, 1);
     }
@@ -52,10 +76,10 @@
       font-size: 24px;
       font-weight: 800;
       margin-bottom: 12px;
-      color: #000000;
+      color: var(--text-color);
       letter-spacing: -0.02em;
       line-height: 1.4;
-      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+      text-shadow: 0 1px 2px var(--shadow-color-light);
     }
 
     .notification-content {
@@ -65,7 +89,7 @@
     
     .content {
       font-size: 15px;
-      color: #4a4a4a;
+      color: var(--text-secondary);
       margin-bottom: 20px;
       line-height: 1.6;
       padding-right: 24px;
@@ -80,27 +104,27 @@
       right: 16px;
       width: 32px;
       height: 32px;
-      border: 2px solid #e0e0e0;
-      background: #ffffff;
+      border: 2px solid var(--border-color);
+      background: var(--bg-gradient-start);
       cursor: pointer;
-      color: #666666;
+      color: var(--text-secondary);
       font-size: 22px;
       display: flex;
       align-items: center;
       justify-content: center;
       border-radius: 50%;
       transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+      box-shadow: 0 2px 8px var(--shadow-color-light);
       z-index: 9999;
       opacity: 1;
     }
 
     .close-btn:hover {
-      color: #333333;
+      color: var(--text-color);
       transform: rotate(90deg);
-      background-color: #f5f5f5;
-      border-color: #d0d0d0;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+      background-color: var(--hover-bg);
+      border-color: var(--hover-border);
+      box-shadow: 0 4px 12px var(--shadow-color);
     }
   </style>
 </head>
@@ -116,10 +140,11 @@
   <script>
     // 接收通知内容
     const avatarUrl = './touxiang.png';
-    window.utools.onMessage(({ payload }) => {
+    window.utools.onMessage(({ payload, theme }) => {
       document.getElementById('notification-title').textContent = payload.title;
       document.getElementById('notification-content').textContent = payload.body;
       document.getElementById('avatar-container').style.backgroundImage = `url(${avatarUrl})`;
+      document.documentElement.setAttribute('theme', theme || 'light');
     });
   </script>
 <script>

@@ -1,33 +1,5 @@
-# 依赖目录
-node_modules/
-
-# 日志文件
-npm-debug.log*
-
-# IDE配置文件
-.vscode/
-.idea/
-
-# 本地环境文件
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
-
-# 构建产物
+# 忽略构建目录
 dist/
-out/
-build/
 
-# Electron构建文件
-release/
-
-# TypeScript编译输出
-*.js
-*.map
-
-# 系统文件
-.DS_Store
-Thumbs.db
-*.swp
-*.swo
+# 忽略头像文件
+touxiang.png
