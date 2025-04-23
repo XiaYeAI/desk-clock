@@ -18,15 +18,17 @@ body {
 }
 
 :root[theme='dark'] {
-  --bg-color: #121212;
-  --card-bg: #1e1e1e;
+  --bg-color: #1f1f1f;
+  --card-bg: #2d2d2d;
   --text-color: #ffffff;
-  --text-secondary: #b0b0b0;
-  --border-color: #333333;
-  --hover-bg: #2a2a2a;
-  --primary-color: #1890ff;
-  --primary-hover-color: #40a9ff;
-  --primary-active-color: #096dd9;
+  --text-secondary: #cccccc;
+  --border-color: #404040;
+  --hover-bg: #383838;
+  --primary-color: #2b95ff;
+  --primary-hover-color: #52b1ff;
+  --primary-active-color: #1a7fd9;
+  --shadow-color: rgba(0, 0, 0, 0.4);
+  --shadow-color-light: rgba(0, 0, 0, 0.25);
 }
 
 .usage-tips {

@@ -119,7 +119,7 @@ window.saveTimeSettings = (blocks) => {
     preAlert: block.preAlert !== undefined ? block.preAlert : false
   }));
   window.utools.dbStorage.setItem(TIME_BLOCKS_KEY, updatedBlocks);
-  window.alertManager.updateTimeBlocks();
+  //window.alertManager.updateTimeBlocks();
 };
 
 window.getTimeSettings = () => {
@@ -130,14 +130,32 @@ window.deleteTimeBlock = (id) => {
   const blocks = window.getTimeSettings();
   const updatedBlocks = blocks.filter(block => block.id !== id);
   window.saveTimeSettings(updatedBlocks);
-  window.alertManager.updateTimeBlocks();
+  // 只重置被删除时间块的状态
+  lastPreAlertTimes.delete(id);
+  lastRemainingMinutes.delete(id);
+  lastAlertDates.delete(id);
+  lastNotificationTimes.delete(id);
 };
 
 window.updateTimeBlock = (id, updatedData) => {
   const blocks = window.getTimeSettings();
   const index = blocks.findIndex(block => block.id === id);
   if (index !== -1) {
-    blocks[index] = { ...blocks[index], ...updatedData };
+    // 保持原有的id和创建时间
+    const originalBlock = blocks[index];
+    blocks[index] = { 
+      ...originalBlock,
+      ...updatedData,
+      id: originalBlock.id,
+      createdAt: originalBlock.createdAt
+    };
+    
+    // 重置预提醒相关状态
+    lastPreAlertTimes.delete(id);
+    lastRemainingMinutes.delete(id);
+    lastAlertDates.delete(id);
+    lastNotificationTimes.delete(id);
+    
     window.saveTimeSettings(blocks);
     return true;
   }
@@ -192,13 +210,14 @@ window.sendNotification = (title, body) => {
     `);
 
   // 更新alertManager的updateTimeBlocks方法
+  /*
   if (window.alertManager) {
     window.alertManager.updateTimeBlocks = function() {
       this.timeBlocks = window.getTimeSettings();
       this.currentBlock = this.timeBlocks.find(b => b.status === 'active');
       this.currentAvatar = window.getGlobalAvatar() || './logo.svg';
     };
-  }
+  }*/
 
   // 监听子窗口发送的消息
   win.on('message', (message) => {
@@ -340,22 +359,6 @@ function getRandomColor() {
       this.startGlobalTimer();
     }
   
-    updateTimeBlocks() {
-      this.timeBlocks = window.getTimeSettings();
-      //this.currentBlock = this.timeBlocks.find(b => b.status === 'active');
-      //this.currentAvatar = window.getGlobalAvatar() || './logo.svg';
-      
-      // 重置修改过的时间块的提醒状态
-      this.timeBlocks.forEach(block => {
-        lastAlertDates.delete(block.id);
-        lastNotificationTimes.delete(block.id);
-        lastPreAlertTimes.delete(block.id);
-        lastRemainingMinutes.delete(block.id);
-      });
-      
-      console.log('[AlertManager] 时间块数据和提醒状态已更新');
-    }
-  
     startTimeBlock(block) {
       this.timeBlocks.push(block);
       if (!this.timer) {
@@ -398,9 +401,9 @@ function getRandomColor() {
           // 检查预提醒条件
           if (block.preAlert && timeDiff > 0 && timeDiff <= settings.preAlertTime) {
             const lastPreAlertTime = lastPreAlertTimes.get(block.id) || 0;
-            const lastRemaining = lastRemainingMinutes.get(block.id);
+            const lastRemaining = lastRemainingMinutes.get(block.id) || 0;
             const preAlertInterval = Math.floor(settings.preAlertTime / settings.preAlertCount);
-            
+            console.log(`[时间检查] 检查预提醒条件: ${block.task}, 剩余${timeDiff}分钟, 上次提醒时间: ${lastPreAlertTime}, 上次剩余: ${lastRemaining}`)
             if (lastRemaining !== timeDiff && 
                 currentTime - lastPreAlertTime >= preAlertInterval * 60000 && 
                 settings.preAlertCount > lastPreAlertTimes.size) {
@@ -429,8 +432,9 @@ function getRandomColor() {
               tomorrow.setDate(tomorrow.getDate() + 1);
               block.startTime = tomorrow.getTime();
               block.status = 'pending';
-              // 重置上一次剩余分钟数
+              // 重置上一次剩余分钟数和预提醒相关状态
               lastRemainingMinutes.delete(block.id);
+              lastPreAlertTimes.delete(block.id);
               hasUpdates = true;
               console.log(`[时间检查] 重置时间块到明天: ${block.task}, 时间: ${tomorrow.getHours()}:${tomorrow.getMinutes()}`);
             } else {
