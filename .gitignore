@@ -3,3 +3,9 @@ dist/
 
 # 忽略头像文件
 touxiang.png
+
+# 忽略bash错误转储文件
+bash.exe.stackdump
+
+# 忽略Trae AI配置目录
+.trae/
