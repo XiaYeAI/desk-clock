@@ -53,6 +53,16 @@
             <option value="false">禁用</option>
           </select>
         </div>
+        <div class="form-input">
+          <label>提醒次数</label>
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <input type="number" id="task-reminder-count" min="1" max="999" placeholder="输入次数" style="width: 80px; min-width: 60px;">
+            <label style="margin: 0; white-space: nowrap;">
+              <input type="checkbox" id="task-reminder-permanent"> 永久提醒
+            </label>
+          </div>
+          <small style="color: #666; font-size: 12px;">永久提醒：每天都会提醒；指定次数：提醒完成后自动禁用</small>
+        </div>
         <div class="form-actions" style="margin-top: 15px;">
           <button class="alert-button primary" onclick="handleFormSubmit()">保存</button>
         </div>
@@ -144,11 +154,20 @@
       const timeBlocks = window.getTimeSettings();
       container.innerHTML = '';
       
-      // 按时间排序
+      // 按时间排序（按小时和分钟）
       timeBlocks.sort((a, b) => {
         const timeA = new Date(a.startTime);
         const timeB = new Date(b.startTime);
-        return timeA.getTime() - timeB.getTime();
+        const hoursA = timeA.getHours();
+        const minutesA = timeA.getMinutes();
+        const hoursB = timeB.getHours();
+        const minutesB = timeB.getMinutes();
+        
+        // 先按小时排序，再按分钟排序
+        if (hoursA !== hoursB) {
+          return hoursA - hoursB;
+        }
+        return minutesA - minutesB;
       });
       
       timeBlocks.forEach(block => {
@@ -161,20 +180,65 @@
         blockEl.style.borderRadius = '4px';
         blockEl.style.cursor = 'pointer';
         
+        // 判断是否为当前正在进行的任务
+        const now = new Date();
+        const currentTime = now.getHours() * 60 + now.getMinutes();
+        const blockTime = blockStartTime.getHours() * 60 + blockStartTime.getMinutes();
+        
+        // 找到当前时间之前最近的任务作为正在进行的任务
+        const enabledBlocks = timeBlocks.filter(b => b.enabled);
+        const pastBlocks = enabledBlocks.filter(b => {
+          const bTime = new Date(b.startTime);
+          const bTimeMinutes = bTime.getHours() * 60 + bTime.getMinutes();
+          return bTimeMinutes <= currentTime;
+        });
+        
+        let currentTaskBlock = null;
+        if (pastBlocks.length > 0) {
+          // 找到时间最接近当前时间的已过去任务
+          currentTaskBlock = pastBlocks.reduce((latest, current) => {
+            const latestTime = new Date(latest.startTime);
+            const currentTimeBlock = new Date(current.startTime);
+            const latestMinutes = latestTime.getHours() * 60 + latestTime.getMinutes();
+            const currentMinutes = currentTimeBlock.getHours() * 60 + currentTimeBlock.getMinutes();
+            return currentMinutes > latestMinutes ? current : latest;
+          });
+        }
+        
+        const isCurrentTask = currentTaskBlock && currentTaskBlock.id === block.id;
+        
         // 显示时间和任务名称
         const timeStr = blockStartTime.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+        // 兼容性处理：为旧数据设置默认值
+        const reminderCount = block.reminderCount !== undefined ? block.reminderCount : -1;
+        const remainingCount = block.remainingCount !== undefined ? block.remainingCount : reminderCount;
+        const reminderText = reminderCount === -1 ? '永久' : `剩余${remainingCount}次`;
+        
+        // 为当前任务添加特殊标识
+        const currentTaskIndicator = isCurrentTask ? '<span style="color: #ff4444; font-weight: bold; margin-left: 10px;">🔥 进行中</span>' : '';
+        
         blockEl.innerHTML = `
-          <div style="font-weight: bold; font-size: 16px">${timeStr}</div>
+          <div style="font-weight: bold; font-size: 16px">${timeStr}${currentTaskIndicator}</div>
           <div style="margin: 5px 0">${block.task}</div>
           <div style="font-size: 12px; color: #666">
             ${block.enabled ? '已启用' : '已禁用'} | 
-            预提醒：${block.preAlert ? '已启用' : '已禁用'}
+            预提醒：${block.preAlert ? '已启用' : '已禁用'} | 
+            提醒：${reminderText}
           </div>
         `;
         
         // 根据状态设置样式
         if (!block.enabled) {
           blockEl.style.opacity = '0.5';
+        }
+        
+        // 为当前正在进行的任务添加特殊样式
+        if (isCurrentTask) {
+          blockEl.classList.add('current-task');
+          blockEl.style.border = '3px solid #ff4444';
+          blockEl.style.boxShadow = '0 0 15px rgba(255, 68, 68, 0.3)';
+          blockEl.style.transform = 'scale(1.02)';
+          blockEl.style.zIndex = '10';
         }
         
         blockEl.onclick = () => {
@@ -200,16 +264,48 @@
         const date = new Date(block.startTime);
         const timeStr = `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
         
+        // 判断是否为当前正在进行的任务
+        const now = new Date();
+        const currentTime = now.getHours() * 60 + now.getMinutes();
+        const blockTime = date.getHours() * 60 + date.getMinutes();
+        
+        // 找到当前时间之前最近的任务作为正在进行的任务
+        const enabledBlocks = timeBlocks.filter(b => b.enabled);
+        const pastBlocks = enabledBlocks.filter(b => {
+          const bTime = new Date(b.startTime);
+          const bTimeMinutes = bTime.getHours() * 60 + bTime.getMinutes();
+          return bTimeMinutes <= currentTime;
+        });
+        
+        let currentTaskBlock = null;
+        if (pastBlocks.length > 0) {
+          // 找到时间最接近当前时间的已过去任务
+          currentTaskBlock = pastBlocks.reduce((latest, current) => {
+            const latestTime = new Date(latest.startTime);
+            const currentTimeBlock = new Date(current.startTime);
+            const latestMinutes = latestTime.getHours() * 60 + latestTime.getMinutes();
+            const currentMinutes = currentTimeBlock.getHours() * 60 + currentTimeBlock.getMinutes();
+            return currentMinutes > latestMinutes ? current : latest;
+          });
+        }
+        
+        const isCurrentTask = currentTaskBlock && currentTaskBlock.id === block.id;
+        
+        // 为当前任务添加特殊样式类和标识
+        const currentTaskClass = isCurrentTask ? ' current-task' : '';
+        const currentTaskIndicator = isCurrentTask ? ' 🔥 进行中' : '';
+        
         return `
-          <div class="time-block-item" data-id="${block.id}">
+          <div class="time-block-item${currentTaskClass}" data-id="${block.id}">
             <div class="time-block-info">
               <div class="time-block-color" style="background: ${block.color}"></div>
               <div class="time-block-details">
-                <strong>${block.task}</strong>
+                <strong>${block.task}${currentTaskIndicator}</strong>
                 <span>${timeStr}</span>
                 <span class="status-indicator">
                   ${block.enabled ? '已启用' : '已禁用'} | 
-                  预提醒：${block.preAlert ? '已启用' : '已禁用'}
+                  预提醒：${block.preAlert ? '已启用' : '已禁用'} | 
+                  提醒：${(block.reminderCount !== undefined ? block.reminderCount : -1) === -1 ? '永久' : `剩余${block.remainingCount !== undefined ? block.remainingCount : (block.reminderCount !== undefined ? block.reminderCount : -1)}次`}
                 </span>
               </div>
             </div>
@@ -235,6 +331,16 @@
       document.getElementById('task-time').value = timeStr;
       document.getElementById('task-enabled').value = block.enabled ? 'true' : 'false';
       document.getElementById('task-pre-alert').value = block.preAlert ? 'true' : 'false';
+      
+      // 设置提醒次数
+      if (block.reminderCount === -1) {
+        document.getElementById('task-reminder-permanent').checked = true;
+        document.getElementById('task-reminder-count').value = '';
+      } else {
+        document.getElementById('task-reminder-permanent').checked = false;
+        document.getElementById('task-reminder-count').value = block.reminderCount || '';
+      }
+      
       window.currentEditingBlockId = id;
       
       // 切换到表单输入模式
@@ -259,6 +365,8 @@
       if (taskTimeInput) taskTimeInput.value = '09:00';
       document.getElementById('task-enabled').value = 'true';
       document.getElementById('task-pre-alert').value = 'true';
+      document.getElementById('task-reminder-count').value = '';
+      document.getElementById('task-reminder-permanent').checked = false;
     }
 
     // 处理可视化表单提交
@@ -267,6 +375,8 @@
       const taskTime = document.getElementById('task-time').value.trim();
       const enabled = document.getElementById('task-enabled').value === 'true';
       const preAlert = document.getElementById('task-pre-alert').value === 'true';
+      const reminderCount = document.getElementById('task-reminder-count').value.trim();
+      const reminderPermanent = document.getElementById('task-reminder-permanent').checked;
 
       // 表单验证
       if (!taskName) {
@@ -275,6 +385,12 @@
       }
       if (!taskTime || !/^\d{1,2}:\d{2}$/.test(taskTime)) {
         alert('请输入正确的时间格式（如：09:00）');
+        return;
+      }
+      
+      // 提醒次数验证
+      if (!reminderPermanent && (!reminderCount || isNaN(reminderCount) || parseInt(reminderCount) < 1)) {
+        alert('请输入有效的提醒次数（大于0的整数）或选择永久提醒');
         return;
       }
 
@@ -290,6 +406,8 @@
         startTime: new Date().setHours(hours, minutes, 0, 0),
         enabled,
         preAlert,
+        reminderCount: reminderPermanent ? -1 : parseInt(reminderCount),
+        remainingCount: reminderPermanent ? -1 : parseInt(reminderCount),
         color: getRandomColor()
       };
 
@@ -310,6 +428,8 @@
       document.getElementById('task-time').value = '09:00';
       document.getElementById('task-enabled').value = 'true';
       document.getElementById('task-pre-alert').value = 'true';
+      document.getElementById('task-reminder-count').value = '';
+      document.getElementById('task-reminder-permanent').checked = false;
     }
 
 
@@ -320,10 +440,21 @@
       return colors[Math.floor(Math.random() * colors.length)];
     }
 
-    // 初始化
-    // 在 DOMContentLoaded 事件监听器中添加
+    // 初始化应用
+    function initApp() {
+      renderTimeline();
+      renderTimeBlockList();
+      
+      // 每分钟刷新一次界面，确保当前任务高亮状态实时更新
+      setInterval(() => {
+        renderTimeline();
+        renderTimeBlockList();
+      }, 60000); // 60秒刷新一次
+    }
+
+    // 页面加载完成后初始化
     document.addEventListener('DOMContentLoaded', () => {
-    document.getElementById('app').style.display = 'block'; // 新增这行
+      document.getElementById('app').style.display = 'block';
       // 添加调试信息
       console.log('DOM加载完成');
       console.log('getTimeSettings存在:', !!window.getTimeSettings);
@@ -371,10 +502,7 @@
       }
       
       if (window.getTimeSettings && window.alertManager) {
-        renderTimeline();
-        renderTimeBlockList();
-        setInterval(renderTimeline, 60000);
-        setInterval(renderTimeBlockList, 60000);
+        initApp();
       } else {
         console.error('初始化失败: getTimeSettings或alertManager未定义');
       }

@@ -1,5 +1,6 @@
 const { ipcRenderer } = require('electron');
 const { exec } = require('child_process');
+const path = require('path');
 
 const TIME_BLOCKS_KEY = 'timeBlocks';
 
@@ -65,7 +66,6 @@ function initUIAndTheme() {
 
   // 检查并设置头像
   const fs = require('fs');
-  const path = require('path');
   const avatarPath = path.join(window.utools.getPath('userData'), 'touxiang.png');
   const defaultAvatarPath = './logo.svg';
   
@@ -116,7 +116,10 @@ window.saveTimeSettings = (blocks) => {
     id: block.id || Date.now().toString(36) + Math.random().toString(36).substr(2),
     createdAt: block.createdAt || Date.now(),
     status: block.status || 'pending',
-    preAlert: block.preAlert !== undefined ? block.preAlert : false
+    preAlert: block.preAlert !== undefined ? block.preAlert : false,
+    // 为已存在的时间块设置默认提醒次数（永久提醒）
+    reminderCount: block.reminderCount !== undefined ? block.reminderCount : -1,
+    remainingCount: block.remainingCount !== undefined ? block.remainingCount : (block.reminderCount !== undefined ? block.reminderCount : -1)
   }));
   window.utools.dbStorage.setItem(TIME_BLOCKS_KEY, updatedBlocks);
   //window.alertManager.updateTimeBlocks();
@@ -165,7 +168,6 @@ window.updateTimeBlock = (id, updatedData) => {
 
 
 // 通知系统
-const path = require('path');
 
 window.sendNotification = (title, body) => {
   console.log(`[通知] 标题: ${title}, 内容: ${body}`);
@@ -427,6 +429,19 @@ function getRandomColor() {
               this.showAlert(block);
               lastAlertDates.set(block.id, today);
               lastNotificationTimes.set(block.id, currentTime);
+              
+              // 处理提醒次数（兼容性处理）
+              const reminderCount = block.reminderCount !== undefined ? block.reminderCount : -1;
+              const remainingCount = block.remainingCount !== undefined ? block.remainingCount : reminderCount;
+              
+              if (reminderCount !== -1) { // 不是永久提醒
+                if (remainingCount > 0) {
+                  block.remainingCount = remainingCount - 1;
+                } else if (remainingCount <= 0) {
+                  block.status = 'disabled'; // 提醒次数用完后禁用
+                }
+              }
+              
               // 重置时间块状态，设置为明天同一时间
               const tomorrow = new Date(blockTime);
               tomorrow.setDate(tomorrow.getDate() + 1);
