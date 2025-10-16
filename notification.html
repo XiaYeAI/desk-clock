@@ -148,11 +148,12 @@
     });
   </script>
 <script>
-  document.getElementById('close-btn').addEventListener('click', () => {
-    console.log('[通知窗口] 关闭按钮被点击');
-    window.utools.sendToParent({ type: 'close-notification' });
-    window.close();
-  });
+    document.getElementById('close-btn').addEventListener('click', () => {
+      const logger = window.logger || { log: console.log.bind(console) };
+      logger.log('[通知窗口] 关闭按钮被点击');
+      window.utools.sendToParent({ type: 'close-notification' });
+      window.close();
+    });
 </script>
 </body>
 </html>

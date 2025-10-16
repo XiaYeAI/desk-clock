@@ -3,7 +3,7 @@ chcp 65001 > nul
 setlocal enabledelayedexpansion
 
 :: 核心文件列表
-set CORE_FILES=index.html style.css preload.js logo.png notification.html plugin.json logo.svg
+set CORE_FILES=index.html style.css preload.js logo.png notification.html plugin.json logo.svg script.js
 
 :: 创建目标目录
 if not exist dist mkdir dist

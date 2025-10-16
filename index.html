@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <title>桌面闹钟</title>
   <link rel="stylesheet" href="style.css">
+  <script defer src="./script.js" data-website-id="a2db7bef-b5fc-4fcf-8b1a-998a8b197cc3" data-host-url="http://106.53.170.171:3000/"></script>
 </head>
 <body>
   <div id="app">
@@ -23,10 +24,24 @@
     </div>
 
     <div id="timeline-tab" class="tab-content active">
+      <!-- 当前任务快速显示区域 -->
+      <div class="current-task-header" id="current-task-header">
+        <div class="current-task-info">
+          <div class="current-task-label">当前任务</div>
+          <div class="current-task-content" id="current-task-content">暂无进行中的任务</div>
+          <div class="current-task-time" id="current-task-time"></div>
+        </div>
+        <div class="next-task-info" id="next-task-info" style="display: none;">
+          <div class="next-task-label">下一个任务</div>
+          <div class="next-task-content" id="next-task-content"></div>
+          <div class="next-task-time" id="next-task-time"></div>
+        </div>
+      </div>
+      
       <div class="timeline">
         <div class="timeline-blocks" id="timeline-blocks"></div>
       </div>
-      <div id="current-task" class="current-task">当前无任务</div>
+      <div id="current-task" class="current-task" style="display: none;">当前无任务</div>
     </div>
 
     <div id="input-tab" class="tab-content">
@@ -52,6 +67,40 @@
             <option value="true">启用</option>
             <option value="false">禁用</option>
           </select>
+        </div>
+        <div class="form-input">
+          <label>提醒模式</label>
+          <select id="task-reminder-mode" onchange="toggleWeekdaySelector()">
+            <option value="daily">每天提醒</option>
+            <option value="weekly">按星期提醒</option>
+          </select>
+        </div>
+        <div class="form-input" id="weekday-selector" style="display: none;">
+          <label>选择星期</label>
+          <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 5px;">
+            <label style="margin: 0; display: flex; align-items: center; gap: 4px; font-size: 12px;">
+              <input type="checkbox" id="weekday-1" value="1"> 周一
+            </label>
+            <label style="margin: 0; display: flex; align-items: center; gap: 4px; font-size: 12px;">
+              <input type="checkbox" id="weekday-2" value="2"> 周二
+            </label>
+            <label style="margin: 0; display: flex; align-items: center; gap: 4px; font-size: 12px;">
+              <input type="checkbox" id="weekday-3" value="3"> 周三
+            </label>
+            <label style="margin: 0; display: flex; align-items: center; gap: 4px; font-size: 12px;">
+              <input type="checkbox" id="weekday-4" value="4"> 周四
+            </label>
+            <label style="margin: 0; display: flex; align-items: center; gap: 4px; font-size: 12px;">
+              <input type="checkbox" id="weekday-5" value="5"> 周五
+            </label>
+            <label style="margin: 0; display: flex; align-items: center; gap: 4px; font-size: 12px;">
+              <input type="checkbox" id="weekday-6" value="6"> 周六
+            </label>
+            <label style="margin: 0; display: flex; align-items: center; gap: 4px; font-size: 12px;">
+              <input type="checkbox" id="weekday-0" value="0"> 周日
+            </label>
+          </div>
+          <small style="color: #666; font-size: 12px;">请至少选择一个星期</small>
         </div>
         <div class="form-input">
           <label>提醒次数</label>
@@ -92,6 +141,28 @@
             <option value="false">禁用</option>
           </select>
         </div>
+        <div class="form-input">
+          <label>提醒方式</label>
+          <div style="padding: 8px 12px; background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px; color: #495057;">
+            弹窗通知（强制提醒）
+          </div>
+          <small style="color: #666; font-size: 12px;">
+            闹钟采用弹窗通知方式，确保重要提醒不会被遗漏
+          </small>
+        </div>
+        <div class="form-input">
+          <label>铃声设置</label>
+          <div style="display: flex; flex-direction: column; gap: 10px;">
+            <div style="display: flex; gap: 10px; align-items: center;">
+              <button class="alert-button primary" onclick="window.handleBellSoundUpload()">选择自定义铃声</button>
+              <button class="alert-button secondary" onclick="window.resetToDefaultBellSound()">使用默认铃声</button>
+              <button class="alert-button secondary" onclick="testBellSound()">测试铃声</button>
+            </div>
+            <div id="bell-sound-status" style="font-size: 12px; color: #666;">当前: 默认铃声</div>
+            <small style="color: #666; font-size: 12px;">支持 MP3、WAV、OGG、M4A、AAC 格式的音频文件</small>
+          </div>
+        </div>
+
       </div>
     </div>
     
@@ -111,6 +182,14 @@
 
   <div class="side-alert" id="side-alert">
     <p id="side-alert-message"></p>
+  </div>
+
+  <!-- 轻量级操作提示 -->
+  <div class="toast-notification" id="toast-notification">
+    <div class="toast-content">
+      <span class="toast-icon">✓</span>
+      <span class="toast-message" id="toast-message"></span>
+    </div>
   </div>
 
 
@@ -146,6 +225,24 @@
       document.querySelector(`.tab-button[onclick="switchTab('${tabId}')"]`).classList.add('active');
     }
 
+    // 切换星期选择器显示/隐藏
+    function toggleWeekdaySelector() {
+      const reminderMode = document.getElementById('task-reminder-mode').value;
+      const weekdaySelector = document.getElementById('weekday-selector');
+      
+      if (reminderMode === 'weekly') {
+        weekdaySelector.style.display = 'block';
+      } else {
+        weekdaySelector.style.display = 'none';
+        // 清空星期选择
+        document.querySelectorAll('[id^="weekday-"]').forEach(checkbox => {
+          checkbox.checked = false;
+        });
+      }
+    }
+
+
+
 
 
     // 渲染时间轴
@@ -174,11 +271,6 @@
         const blockStartTime = new Date(block.startTime);
         const blockEl = document.createElement('div');
         blockEl.className = 'timeline-block';
-        blockEl.style.background = block.color;
-        blockEl.style.margin = '10px 0';
-        blockEl.style.padding = '10px';
-        blockEl.style.borderRadius = '4px';
-        blockEl.style.cursor = 'pointer';
         
         // 判断是否为当前正在进行的任务
         const now = new Date();
@@ -186,7 +278,19 @@
         const blockTime = blockStartTime.getHours() * 60 + blockStartTime.getMinutes();
         
         // 找到当前时间之前最近的任务作为正在进行的任务
-        const enabledBlocks = timeBlocks.filter(b => b.enabled);
+        const enabledBlocks = timeBlocks.filter(b => {
+          if (!b.enabled) return false;
+          
+          // 检查星期提醒模式
+          const reminderMode = b.reminderMode || 'daily';
+          if (reminderMode === 'weekly') {
+            const currentWeekday = now.getDay(); // 0=周日, 1=周一, ..., 6=周六
+            const weekdays = b.weekdays || [];
+            return weekdays.includes(currentWeekday); // 只有今天在选定星期内才考虑
+          }
+          return true; // 每日提醒模式
+        });
+        
         const pastBlocks = enabledBlocks.filter(b => {
           const bTime = new Date(b.startTime);
           const bTimeMinutes = bTime.getHours() * 60 + bTime.getMinutes();
@@ -214,40 +318,148 @@
         const remainingCount = block.remainingCount !== undefined ? block.remainingCount : reminderCount;
         const reminderText = reminderCount === -1 ? '永久' : `剩余${remainingCount}次`;
         
-        // 为当前任务添加特殊标识
-        const currentTaskIndicator = isCurrentTask ? '<span style="color: #ff4444; font-weight: bold; margin-left: 10px;">🔥 进行中</span>' : '';
+        // 获取提醒模式信息
+        const reminderMode = block.reminderMode || 'daily';
+        let reminderModeText = '每日';
+        if (reminderMode === 'weekly') {
+          const weekdays = block.weekdays || [];
+          const weekNames = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+          const selectedDays = weekdays.map(day => weekNames[day]).join('、');
+          reminderModeText = `每周(${selectedDays})`;
+        }
         
-        blockEl.innerHTML = `
-          <div style="font-weight: bold; font-size: 16px">${timeStr}${currentTaskIndicator}</div>
-          <div style="margin: 5px 0">${block.task}</div>
-          <div style="font-size: 12px; color: #666">
-            ${block.enabled ? '已启用' : '已禁用'} | 
-            预提醒：${block.preAlert ? '已启用' : '已禁用'} | 
-            提醒：${reminderText}
-          </div>
-        `;
+        // 构建新的树状时间轴HTML结构
+         blockEl.innerHTML = `
+           <div class="timeline-content">
+             <div class="timeline-color-indicator" style="background: ${block.color}"></div>
+             <div class="timeline-text">
+               <div class="timeline-header">
+                 <div class="timeline-time">${timeStr}</div>
+                 <div class="timeline-task">${block.task}</div>
+               </div>
+               <div class="timeline-status">
+                 ${block.enabled ? '已启用' : '已禁用'} | 
+                 预提醒：${block.preAlert ? '已启用' : '已禁用'} | 
+                 提醒：${reminderText} | 
+                 模式：${reminderModeText}
+               </div>
+               ${isCurrentTask ? '<div class="timeline-current-indicator">🔥 进行中</div>' : ''}
+             </div>
+           </div>
+         `;
         
-        // 根据状态设置样式
+        // 根据状态设置样式类
         if (!block.enabled) {
-          blockEl.style.opacity = '0.5';
+          blockEl.classList.add('disabled');
         }
         
         // 为当前正在进行的任务添加特殊样式
         if (isCurrentTask) {
           blockEl.classList.add('current-task');
-          blockEl.style.border = '3px solid #ff4444';
-          blockEl.style.boxShadow = '0 0 15px rgba(255, 68, 68, 0.3)';
-          blockEl.style.transform = 'scale(1.02)';
-          blockEl.style.zIndex = '10';
         }
         
         blockEl.onclick = () => {
-          console.log('时间块点击事件触发:', block);
+          const logger = window.logger || { log: console.log.bind(console) };
+          logger.log('时间块点击事件触发:', block);
           window.alertManager.startTimeBlock(block);
         };
 
         container.appendChild(blockEl);
       });
+      
+      // 更新当前任务头部显示
+      updateCurrentTaskHeader(timeBlocks);
+    }
+
+    /**
+     * 更新当前任务头部显示区域
+     * @param {Array} timeBlocks - 时间块数组
+     * @date 2024-01-20
+     */
+    function updateCurrentTaskHeader(timeBlocks) {
+      const currentTaskContent = document.getElementById('current-task-content');
+      const currentTaskTime = document.getElementById('current-task-time');
+      const nextTaskInfo = document.getElementById('next-task-info');
+      const nextTaskContent = document.getElementById('next-task-content');
+      const nextTaskTime = document.getElementById('next-task-time');
+      
+      const now = new Date();
+      const currentTime = now.getHours() * 60 + now.getMinutes();
+      
+      // 找到当前正在进行的任务
+      const enabledBlocks = timeBlocks.filter(b => {
+        if (!b.enabled) return false;
+        
+        // 检查星期提醒模式
+        const reminderMode = b.reminderMode || 'daily';
+        if (reminderMode === 'weekly') {
+          const currentWeekday = now.getDay();
+          const weekdays = b.weekdays || [];
+          return weekdays.includes(currentWeekday);
+        }
+        return true;
+      });
+      
+      const pastBlocks = enabledBlocks.filter(b => {
+        const bTime = new Date(b.startTime);
+        const bTimeMinutes = bTime.getHours() * 60 + bTime.getMinutes();
+        return bTimeMinutes <= currentTime;
+      });
+      
+      let currentTaskBlock = null;
+      if (pastBlocks.length > 0) {
+        currentTaskBlock = pastBlocks.reduce((latest, current) => {
+          const latestTime = new Date(latest.startTime);
+          const currentTimeBlock = new Date(current.startTime);
+          const latestMinutes = latestTime.getHours() * 60 + latestTime.getMinutes();
+          const currentMinutes = currentTimeBlock.getHours() * 60 + currentTimeBlock.getMinutes();
+          return currentMinutes > latestMinutes ? current : latest;
+        });
+      }
+      
+      // 找到下一个任务
+      const futureBlocks = enabledBlocks.filter(b => {
+        const bTime = new Date(b.startTime);
+        const bTimeMinutes = bTime.getHours() * 60 + bTime.getMinutes();
+        return bTimeMinutes > currentTime;
+      });
+      
+      let nextTaskBlock = null;
+      if (futureBlocks.length > 0) {
+        nextTaskBlock = futureBlocks.reduce((earliest, current) => {
+          const earliestTime = new Date(earliest.startTime);
+          const currentTimeBlock = new Date(current.startTime);
+          const earliestMinutes = earliestTime.getHours() * 60 + earliestTime.getMinutes();
+          const currentMinutes = currentTimeBlock.getHours() * 60 + currentTimeBlock.getMinutes();
+          return currentMinutes < earliestMinutes ? current : earliest;
+        });
+      }
+      
+      // 更新当前任务显示
+      if (currentTaskBlock) {
+        const startTime = new Date(currentTaskBlock.startTime);
+        const timeStr = startTime.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+        const elapsed = Math.floor((currentTime - (startTime.getHours() * 60 + startTime.getMinutes())));
+        
+        currentTaskContent.textContent = currentTaskBlock.task;
+        currentTaskTime.textContent = `${timeStr} 开始 (已进行 ${elapsed} 分钟)`;
+      } else {
+        currentTaskContent.textContent = '暂无进行中的任务';
+        currentTaskTime.textContent = '';
+      }
+      
+      // 更新下一个任务显示
+      if (nextTaskBlock) {
+        const startTime = new Date(nextTaskBlock.startTime);
+        const timeStr = startTime.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+        const remaining = (startTime.getHours() * 60 + startTime.getMinutes()) - currentTime;
+        
+        nextTaskContent.textContent = nextTaskBlock.task;
+        nextTaskTime.textContent = `${timeStr} 开始 (还有 ${remaining} 分钟)`;
+        nextTaskInfo.style.display = 'block';
+      } else {
+        nextTaskInfo.style.display = 'none';
+      }
     }
 
     // 处理提醒操作
@@ -270,7 +482,19 @@
         const blockTime = date.getHours() * 60 + date.getMinutes();
         
         // 找到当前时间之前最近的任务作为正在进行的任务
-        const enabledBlocks = timeBlocks.filter(b => b.enabled);
+        const enabledBlocks = timeBlocks.filter(b => {
+          if (!b.enabled) return false;
+          
+          // 检查星期提醒模式
+          const reminderMode = b.reminderMode || 'daily';
+          if (reminderMode === 'weekly') {
+            const currentWeekday = now.getDay(); // 0=周日, 1=周一, ..., 6=周六
+            const weekdays = b.weekdays || [];
+            return weekdays.includes(currentWeekday); // 只有今天在选定星期内才考虑
+          }
+          return true; // 每日提醒模式
+        });
+        
         const pastBlocks = enabledBlocks.filter(b => {
           const bTime = new Date(b.startTime);
           const bTimeMinutes = bTime.getHours() * 60 + bTime.getMinutes();
@@ -305,7 +529,18 @@
                 <span class="status-indicator">
                   ${block.enabled ? '已启用' : '已禁用'} | 
                   预提醒：${block.preAlert ? '已启用' : '已禁用'} | 
-                  提醒：${(block.reminderCount !== undefined ? block.reminderCount : -1) === -1 ? '永久' : `剩余${block.remainingCount !== undefined ? block.remainingCount : (block.reminderCount !== undefined ? block.reminderCount : -1)}次`}
+                  提醒：${(block.reminderCount !== undefined ? block.reminderCount : -1) === -1 ? '永久' : `剩余${block.remainingCount !== undefined ? block.remainingCount : (block.reminderCount !== undefined ? block.reminderCount : -1)}次`} | 
+                  模式：${(() => {
+                    const mode = block.reminderMode || 'daily';
+                    if (mode === 'daily') return '每日';
+                    if (mode === 'weekly') {
+                      const weekdays = block.weekdays || [];
+                      const weekNames = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+                      const selectedDays = weekdays.map(day => weekNames[day]).join('、');
+                      return `每周(${selectedDays})`;
+                    }
+                    return mode;
+                  })()}
                 </span>
               </div>
             </div>
@@ -341,6 +576,26 @@
         document.getElementById('task-reminder-count').value = block.reminderCount || '';
       }
       
+      // 设置提醒模式和星期选择
+      const reminderMode = block.reminderMode || 'daily';
+      document.getElementById('task-reminder-mode').value = reminderMode;
+      
+      // 清空所有星期选择
+      document.querySelectorAll('[id^="weekday-"]').forEach(checkbox => {
+        checkbox.checked = false;
+      });
+      
+      // 如果是星期提醒模式，回填选中的星期
+      if (reminderMode === 'weekly' && block.weekdays && block.weekdays.length > 0) {
+        block.weekdays.forEach(day => {
+          const checkbox = document.getElementById(`weekday-${day}`);
+          if (checkbox) {
+            checkbox.checked = true;
+          }
+        });
+      }
+      
+      toggleWeekdaySelector();
       window.currentEditingBlockId = id;
       
       // 切换到表单输入模式
@@ -377,6 +632,7 @@
       const preAlert = document.getElementById('task-pre-alert').value === 'true';
       const reminderCount = document.getElementById('task-reminder-count').value.trim();
       const reminderPermanent = document.getElementById('task-reminder-permanent').checked;
+      const reminderMode = document.getElementById('task-reminder-mode').value;
 
       // 表单验证
       if (!taskName) {
@@ -394,6 +650,17 @@
         return;
       }
 
+      // 星期提醒验证
+      let weekdays = [];
+      if (reminderMode === 'weekly') {
+        const checkedWeekdays = document.querySelectorAll('[id^="weekday-"]:checked');
+        if (checkedWeekdays.length === 0) {
+          alert('按星期提醒模式下，请至少选择一个星期');
+          return;
+        }
+        weekdays = Array.from(checkedWeekdays).map(cb => parseInt(cb.value));
+      }
+
       const [hours, minutes] = taskTime.split(':').map(Number);
       if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) {
         alert('请输入有效的时间范围（00:00-23:59）');
@@ -408,6 +675,8 @@
         preAlert,
         reminderCount: reminderPermanent ? -1 : parseInt(reminderCount),
         remainingCount: reminderPermanent ? -1 : parseInt(reminderCount),
+        reminderMode: reminderMode,
+        weekdays: reminderMode === 'weekly' ? weekdays : [],
         color: getRandomColor()
       };
 
@@ -424,12 +693,22 @@
 
       renderTimeline();
       renderTimeBlockList();
+      clearForm();
+    }
+
+    // 清空表单
+    function clearForm() {
       document.getElementById('task-name').value = '';
       document.getElementById('task-time').value = '09:00';
       document.getElementById('task-enabled').value = 'true';
       document.getElementById('task-pre-alert').value = 'true';
       document.getElementById('task-reminder-count').value = '';
       document.getElementById('task-reminder-permanent').checked = false;
+      document.getElementById('task-reminder-mode').value = 'daily';
+      document.querySelectorAll('[id^="weekday-"]').forEach(checkbox => {
+        checkbox.checked = false;
+      });
+      toggleWeekdaySelector();
     }
 
 
@@ -438,6 +717,16 @@
     function getRandomColor() {
       const colors = ['#1890ff', '#52c41a', '#faad14', '#f5222d', '#722ed1'];
       return colors[Math.floor(Math.random() * colors.length)];
+    }
+
+    // 测试铃声功能
+    function testBellSound() {
+      if (window.playBellSound) {
+        window.playBellSound();
+        showFormAlert('铃声测试', '铃声播放完成！如果没有听到声音，请检查系统音量设置。');
+      } else {
+        showFormAlert('错误', '铃声功能未初始化，请重新加载页面。');
+      }
     }
 
     // 初始化应用
@@ -455,19 +744,20 @@
     // 页面加载完成后初始化
     document.addEventListener('DOMContentLoaded', () => {
       document.getElementById('app').style.display = 'block';
-      // 添加调试信息
-      console.log('DOM加载完成');
-      console.log('getTimeSettings存在:', !!window.getTimeSettings);
-      console.log('alertManager存在:', !!window.alertManager);
+      // 添加调试信息（安全检查日志管理器是否已加载）
+      const logger = window.logger || { log: console.log.bind(console), error: console.error.bind(console) };
+      logger.log('DOM加载完成');
+      logger.log('getTimeSettings存在:', !!window.getTimeSettings);
+      logger.log('alertManager存在:', !!window.alertManager);
   
       
       // 检查是否在uTools环境中
       const isInUTools = window.utools !== undefined;
-      console.log('是否在uTools环境中:', isInUTools);
+      logger.log('是否在uTools环境中:', isInUTools);
       
       // 如果不在uTools环境中，提供模拟数据用于测试
-      if (!isInUTools) {
-        console.log('非uTools环境，使用模拟数据');
+        if (!isInUTools) {
+          logger.log('非uTools环境，使用模拟数据');
         window.getTimeSettings = window.getTimeSettings || function() {
           return [
             {
@@ -496,16 +786,16 @@
             alert('开始任务: ' + block.task);
           },
           handleAction: function(action) {
-            console.log('执行操作:', action);
-          }
+              logger.log('执行操作:', action);
+            }
         };
       }
       
       if (window.getTimeSettings && window.alertManager) {
         initApp();
       } else {
-        console.error('初始化失败: getTimeSettings或alertManager未定义');
-      }
+          logger.error('初始化失败: getTimeSettings或alertManager未定义');
+        }
     });
   </script>
 </body>

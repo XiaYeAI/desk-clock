@@ -32,13 +32,13 @@ body {
 }
 
 .usage-tips {
-  background: var(--card-bg, #fff);
-  border-radius: 8px;
-  padding: 20px;
-  margin-bottom: 20px;
+  background: linear-gradient(135deg, #fff8f0 0%, #fff 100%);
+  border-radius: 6px;
+  padding: 10px 14px;
+  margin-bottom: 12px;
   position: relative;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
-  border: 1px solid var(--border-color, #eee);
+  box-shadow: 0 2px 8px rgba(255, 152, 0, 0.15);
+  border: 1px solid #ff9800;
 }
 
 .tips-content {
@@ -46,8 +46,10 @@ body {
 }
 
 .tips-content h3 {
-  margin: 0 0 12px;
-  font-size: 18px;
+  margin: 0 0 8px;
+  font-size: 16px;
+  font-weight: 700;
+  color: #e65100;
 }
 
 /* 当前任务高亮样式 */
@@ -80,21 +82,23 @@ body {
  }
 
 .tips-content p {
-  margin: 8px 0;
-  font-size: 14px;
-  line-height: 1.6;
+  margin: 3px 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #d84315;
+  font-weight: 500;
 }
 
 .tips-close {
   position: absolute;
-  top: 12px;
-  right: 12px;
-  width: 24px;
-  height: 24px;
+  top: 6px;
+  right: 8px;
+  width: 18px;
+  height: 18px;
   border: none;
   background: transparent;
   color: var(--text-secondary, #999);
-  font-size: 18px;
+  font-size: 14px;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -152,36 +156,230 @@ body {
   min-height: 200px;
   border: 1px solid var(--border-color);
 }
+
+/* 当前任务快速显示区域 */
+.current-task-header {
+  background: linear-gradient(135deg, #f8f9ff 0%, #e8f2ff 100%);
+  border: 1px solid #d1e7ff;
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin-bottom: 20px;
+  box-shadow: 0 2px 8px rgba(0, 123, 255, 0.1);
+}
+
+.current-task-info, .next-task-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+
+.current-task-info:last-child, .next-task-info:last-child {
+  margin-bottom: 0;
+}
+
+.current-task-label, .next-task-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-right: 4px;
+  flex-shrink: 0;
+}
+
+.current-task-content, .next-task-content {
+  font-size: 15px;
+  font-weight: 600;
+  color: #333;
+  flex-grow: 1;
+  min-width: 0;
+}
+
+.current-task-time, .next-task-time {
+  font-size: 13px;
+  color: #007bff;
+  font-weight: 500;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.current-task-info .current-task-content {
+  color: #dc3545;
+}
+
+.current-task-info .current-task-time {
+  color: #dc3545;
+}
+
+/* 树状时间轴容器 */
 .timeline-blocks {
   position: relative;
-  border-top: 1px solid var(--border-color);
   margin-top: 20px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
+  padding-left: 30px;
 }
+
+/* 时间轴主线 */
+.timeline-blocks::before {
+  content: '';
+  position: absolute;
+  left: 15px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: linear-gradient(to bottom, var(--primary-color), var(--primary-color) 50%, transparent 50%);
+  background-size: 2px 20px;
+}
+
+/* 时间轴节点 */
 .timeline-block {
   position: relative;
-  min-height: 40px;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: all 0.3s;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  padding: 15px;
-  color: var(--text-color);
-  font-size: 14px;
-  flex: 1;
-  min-width: 200px;
-  max-width: 300px;
-  word-break: break-word;
-  box-shadow: 0 1px 3px var(--shadow-color-light);
+  margin-bottom: 30px;
   background: var(--card-bg);
   border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 16px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  cursor: pointer;
+  transition: all 0.3s ease;
+  margin-left: 20px;
 }
+
+/* 时间轴节点圆点 */
+.timeline-block::before {
+  content: '';
+  position: absolute;
+  left: -35px;
+  top: 20px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--card-bg);
+  border: 3px solid var(--primary-color);
+  z-index: 2;
+}
+
+/* 时间轴节点连接线 */
+.timeline-block::after {
+  content: '';
+  position: absolute;
+  left: -29px;
+  top: 26px;
+  width: 20px;
+  height: 2px;
+  background: var(--primary-color);
+  z-index: 1;
+}
+
 .timeline-block:hover {
-  transform: scale(1.02);
+  transform: translateX(5px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+}
+
+/* 时间轴内容区域 */
+.timeline-content {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+/* 颜色指示器 */
+.timeline-color-indicator {
+  width: 4px;
+  height: 40px;
+  border-radius: 2px;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+/* 时间轴文本内容 */
+.timeline-text {
+  flex: 1;
+  color: var(--text-color);
+}
+
+/* 时间和任务名称同行显示 */
+.timeline-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+
+.timeline-time {
+  font-size: 16px;
+  font-weight: bold;
+  color: var(--primary-color);
+  flex-shrink: 0;
+  min-width: 50px;
+}
+
+.timeline-task {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-color);
+  line-height: 1.3;
+  flex: 1;
+}
+
+.timeline-status {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.timeline-current-indicator {
+  color: #ff4444;
+  font-weight: bold;
+  font-size: 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+/* 当前任务特殊样式 */
+.timeline-block.current-task {
+  border-color: #ff4444;
+  background: linear-gradient(135deg, rgba(255, 68, 68, 0.05), rgba(255, 68, 68, 0.02));
+  box-shadow: 0 4px 20px rgba(255, 68, 68, 0.2);
+}
+
+.timeline-block.current-task::before {
+  border-color: #ff4444;
+  background: #ff4444;
+  animation: pulse-dot 2s infinite;
+}
+
+.timeline-block.current-task .timeline-time {
+  color: #ff4444;
+}
+
+@keyframes pulse-dot {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.2);
+    opacity: 0.8;
+  }
+}
+
+/* 禁用状态 */
+.timeline-block.disabled {
+  opacity: 0.6;
+  background: var(--hover-bg);
+}
+
+.timeline-block.disabled::before {
+  border-color: var(--text-secondary);
+  background: var(--hover-bg);
+}
+
+.timeline-block.disabled .timeline-time {
+  color: var(--text-secondary);
 }
 .input-container {
   background: var(--card-bg);
@@ -445,4 +643,51 @@ body {
 .time-block-actions .delete {
   background: #ff4d4f;
   color: white;
+}
+
+/* Toast 提示样式 */
+.toast-notification {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  background: var(--card-bg, #fff);
+  border: 1px solid var(--border-color, #eee);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  padding: 0;
+  z-index: 9999;
+  opacity: 0;
+  transform: translateX(100%);
+  transition: all 0.3s ease;
+  max-width: 300px;
+  min-width: 200px;
+}
+
+.toast-notification.show {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.toast-content {
+  display: flex;
+  align-items: center;
+  padding: 12px 16px;
+  gap: 8px;
+}
+
+.toast-icon {
+  font-size: 16px;
+  color: #52c41a;
+  flex-shrink: 0;
+}
+
+.toast-icon.error {
+  color: #ff4d4f;
+}
+
+.toast-message {
+  color: var(--text-color, #333);
+  font-size: 14px;
+  line-height: 1.4;
+  word-break: break-word;
 }
