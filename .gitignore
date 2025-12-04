@@ -9,3 +9,12 @@ bash.exe.stackdump
 
 # 忽略Trae AI配置目录
 .trae/
+install/desk-clock-widget/
+widget/release/
+widget/release_packaged*/
+widget/.claude/
+widget/node_modules/
+node_modules/
+Thumbs.db
+.DS_Store
+*.log

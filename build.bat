@@ -33,4 +33,16 @@ for /r dist %%f in (*) do (
 
 echo.
 echo 构建完成，有效文件已复制到 dist 目录
+echo.
+echo 正在打包微件...
+if exist "scripts\build-widget.ps1" (
+    powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\build-widget.ps1"
+    if %ERRORLEVEL% NEQ 0 (
+        echo 微件打包失败，请检查依赖或脚本
+    ) else (
+        echo 微件打包完成，已生成 install\desk-clock-widget\DeskClockWidget.exe
+    )
+) else (
+    echo 未找到 scripts\build-widget.ps1，跳过微件打包
+)
 endlocal

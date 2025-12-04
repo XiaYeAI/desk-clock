@@ -39,3 +39,26 @@
 - 实现当前任务高亮显示，优化任务识别逻辑
 - 改进用户界面，防止文本溢出并增强实时更新
 - 添加每分钟自动刷新机制确保任务状态准确显示
+
+## 微件（悬浮窗）使用说明
+
+- 打包微件
+  - 在仓库根目录执行：
+    - `. .\scripts\widget_build.ps1`
+    - `Invoke-WidgetBuild`
+  - 成功后生成 `install\desk-clock-widget\DeskClockWidget.exe` 并打印 `SHA256` 校验值。
+
+- 运行微件
+  - `\.\install\desk-clock-widget\DeskClockWidget.exe`
+  - 窗口为无框透明置顶，显示当前任务名称，并与插件保持心跳通信。
+
+- 开机自启快捷方式（可选）
+  - 加载脚本：`. .\scripts\deskclock_autostart.ps1`
+  - 创建快捷方式：
+    - `New-DeskClockWidgetStartupShortcut -WidgetExePath (Resolve-Path .\install\desk-clock-widget\DeskClockWidget.exe).Path -Arguments '--minimized'`
+  - 如需移除：`Remove-DeskClockWidgetStartupShortcut`
+
+- 常见问题
+  - 构建失败或提示文件占用：先结束微件进程 `taskkill /IM DeskClockWidget.exe /F` 后重试 `Invoke-WidgetBuild`
+  - 打包后未出现悬浮窗：运行 `DeskClockWidget.exe`，确认 `C:\Users\<用户名>\DeskClock\status.json` 心跳更新
+  - 需要调整透明度、置顶策略等：点击悬浮窗右上角齿轮进入设置页

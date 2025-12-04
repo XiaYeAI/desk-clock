@@ -9,10 +9,12 @@ const TIME_BLOCKS_KEY = 'timeBlocks';
  * 环境检测和日志管理器
  * 功能：区分开发环境和生产环境，控制日志输出
  * 创建日期：2025-01-16
+ * 更新日期：2025-01-16 - 添加文件日志记录功能
  */
 class LogManager {
   constructor() {
     this.isDevelopment = this.detectEnvironment();
+    this.initFileLogging();
     this.initLogger();
   }
 
@@ -58,9 +60,77 @@ class LogManager {
   }
 
   /**
+   * 初始化文件日志记录
+   * 功能：设置生产环境下的文件日志记录
+   * 创建日期：2025-01-16
+   */
+  initFileLogging() {
+    this.logFilePath = null;
+    this.maxLogFileSize = 10 * 1024 * 1024; // 10MB
+    
+    if (!this.isDevelopment) {
+      try {
+        // 获取用户数据目录
+        const userDataPath = window.utools ? window.utools.getPath('userData') : process.cwd();
+        this.logFilePath = path.join(userDataPath, 'debug.log');
+        
+        // 检查日志文件大小，如果超过限制则清空
+        this.checkLogFileSize();
+      } catch (error) {
+        // 文件日志初始化失败，忽略
+        this.logFilePath = null;
+      }
+    }
+  }
+
+  /**
+   * 检查并管理日志文件大小
+   * 功能：防止日志文件过大
+   * 创建日期：2025-01-16
+   */
+  checkLogFileSize() {
+    if (!this.logFilePath) return;
+    
+    try {
+      if (fs.existsSync(this.logFilePath)) {
+        const stats = fs.statSync(this.logFilePath);
+        if (stats.size > this.maxLogFileSize) {
+          // 文件过大，清空重写
+          fs.writeFileSync(this.logFilePath, `[${new Date().toISOString()}] [INFO] 日志文件已清空（超过大小限制）\n`);
+        }
+      }
+    } catch (error) {
+      // 文件操作失败，忽略
+    }
+  }
+
+  /**
+   * 写入文件日志
+   * 功能：将日志信息写入文件
+   * 参数：level - 日志级别，message - 日志消息
+   * 创建日期：2025-01-16
+   */
+  writeToFile(level, ...args) {
+    if (!this.logFilePath) return;
+    
+    try {
+      const timestamp = new Date().toISOString();
+      const message = args.map(arg => 
+        typeof arg === 'object' ? JSON.stringify(arg) : String(arg)
+      ).join(' ');
+      const logEntry = `[${timestamp}] [${level}] ${message}\n`;
+      
+      fs.appendFileSync(this.logFilePath, logEntry);
+    } catch (error) {
+      // 文件写入失败，忽略
+    }
+  }
+
+  /**
    * 初始化日志器
    * 功能：根据环境设置日志输出策略
    * 创建日期：2025-01-16
+   * 更新日期：2025-01-16 - 添加文件日志支持和debug方法
    */
   initLogger() {
     if (this.isDevelopment) {
@@ -71,12 +141,16 @@ class LogManager {
       this.info = console.info.bind(console);
       this.debug = console.debug.bind(console);
     } else {
-      // 生产环境：只保留错误日志，其他日志静默
-      this.log = () => {}; // 静默
-      this.error = console.error.bind(console); // 保留错误日志
-      this.warn = () => {}; // 静默
-      this.info = () => {}; // 静默
-      this.debug = () => {}; // 静默
+      // 生产环境：控制台静默，但写入文件
+      this.log = (...args) => this.writeToFile('INFO', ...args);
+      this.error = (...args) => {
+        console.error(...args); // 错误日志仍然在控制台显示
+        this.writeToFile('ERROR', ...args);
+      };
+      this.warn = (...args) => this.writeToFile('WARN', ...args);
+      this.info = (...args) => this.writeToFile('INFO', ...args);
+      // debug方法在生产环境下完全静默，不写入文件
+      this.debug = () => {};
     }
   }
 
@@ -88,13 +162,28 @@ class LogManager {
   getEnvironmentInfo() {
     return this.isDevelopment ? '开发环境' : '生产环境';
   }
+
+  /**
+   * 获取日志文件路径
+   * 返回值：string - 日志文件路径，如果未启用文件日志则返回null
+   * 创建日期：2025-01-16
+   */
+  getLogFilePath() {
+    return this.logFilePath;
+  }
 }
 
 // 创建全局日志管理器实例
 window.logger = new LogManager();
 
-// 输出环境信息（仅在开发环境）
+// 输出环境信息和日志文件路径
 window.logger.log(`[日志管理器] 当前运行环境: ${window.logger.getEnvironmentInfo()}`);
+if (window.logger.getLogFilePath()) {
+  window.logger.log(`[日志管理器] 日志文件路径: ${window.logger.getLogFilePath()}`);
+}
+
+// 添加插件生命周期日志
+window.logger.log(`[插件生命周期] preload.js 开始加载`);
 
 // 初始化存储、主题和头像
 function initStorage() {
@@ -139,6 +228,7 @@ function initUIAndTheme() {
     globalAlertToggle.value = settings.globalAlertEnabled ? 'true' : 'false';
   }
   
+  
   // 初始化铃声UI显示
   setTimeout(() => {
     updateBellSoundUI();
@@ -150,6 +240,19 @@ function initUIAndTheme() {
   
   // 每次插件进入时统一处理主题同步、窗口显示和时间线渲染
   window.utools.onPluginEnter(({ code, type, payload }) => {
+    window.logger.log(`[插件生命周期] onPluginEnter 触发 - code: ${code}, type: ${type}`);
+    
+    // 确保app元素可见（修复切换插件后界面无法显示的问题）
+    const appElement = document.getElementById('app');
+    if (appElement) {
+      const currentDisplay = appElement.style.display;
+      window.logger.log(`[插件生命周期] app元素当前display状态: ${currentDisplay || 'default'}`);
+      appElement.style.display = 'block';
+      window.logger.log(`[插件生命周期] app元素display已设置为: block`);
+    } else {
+      window.logger.error(`[插件生命周期] 未找到app元素`);
+    }
+    
     // 同步主题
     const currentIsDarkMode = window.utools.isDarkColors();
     document.documentElement.setAttribute('theme', currentIsDarkMode ? 'dark' : 'light');
@@ -165,6 +268,19 @@ function initUIAndTheme() {
         window.renderTimeline();
       }, 100);
     }
+    // 若悬浮窗可见，立即同步一次数据
+    try {
+      const st = getFloatingState();
+      if (st && st.visible) window.pushFloatingData();
+    } catch (_) {}
+
+    // 更新悬浮窗按钮文本为正确状态
+    try {
+      const btn = document.getElementById('floating-toggle-btn');
+      if (btn) btn.textContent = '显示悬浮窗';
+    } catch (_) {}
+
+    window.logger.log(`[插件生命周期] onPluginEnter 处理完成`);
   });
 }
 
@@ -173,13 +289,23 @@ initStorage();
 
 // 在DOM加载完成后初始化UI和主题
 document.addEventListener('DOMContentLoaded', () => {
+  window.logger.log(`[插件生命周期] DOM加载完成，开始初始化应用`);
   initUIAndTheme();
   // 显示主窗口
   const appElement = document.getElementById('app');
   if (appElement) {
     appElement.style.display = 'block';
   }
+  window.logger.log(`[插件生命周期] 应用初始化完成`);
 });
+
+/*
+ * 功能：设置页悬浮窗显示/隐藏切换并更新按钮文案
+ * 参数：无
+ * 返回值：无
+ * 创建日期：2025-12-01
+ */
+
 
 // 时间块管理
 window.saveTimeSettings = (blocks) => {
@@ -196,6 +322,10 @@ window.saveTimeSettings = (blocks) => {
   }));
   window.utools.dbStorage.setItem(TIME_BLOCKS_KEY, updatedBlocks);
   //window.alertManager.updateTimeBlocks();
+  try {
+    const st = getFloatingState();
+    if (st && st.visible) window.pushFloatingData();
+  } catch (_) {}
 };
 
 window.getTimeSettings = () => {
@@ -211,6 +341,10 @@ window.deleteTimeBlock = (id) => {
   lastRemainingMinutes.delete(id);
   lastAlertDates.delete(id);
   lastNotificationTimes.delete(id);
+  try {
+    const st = getFloatingState();
+    if (st && st.visible) window.pushFloatingData();
+  } catch (_) {}
 };
 
 window.updateTimeBlock = (id, updatedData) => {
@@ -436,6 +570,425 @@ window.sendNotification = (title, body) => {
   window.sendPopupNotification(title, body);
 };
 
+// 悬浮窗运行态标记
+if (typeof window.__floatingVisible === 'undefined') window.__floatingVisible = false;
+if (typeof window.__floatingOpening === 'undefined') window.__floatingOpening = false;
+if (typeof window.__floatingWindows === 'undefined') window.__floatingWindows = [];
+
+/*
+ * 功能：创建并显示悬浮窗
+ * 参数：无
+ * 返回值：BrowserWindow 实例或 null
+ * 创建日期：2025-12-01
+ */
+window.openFloatingWindow = () => {
+  try {
+    if (window.__floatingOpening) return window.floatingWin || null;
+    // 检查是否存在未销毁的窗口，无论__floatingVisible是什么
+    if (window.floatingWin && !window.floatingWin.isDestroyed()) {
+      try { window.logger.log('[悬浮窗] open: 已存在窗口，执行show'); } catch (_) {}
+      window.floatingWin.show();
+      startFloatingUpdateTimer();
+      persistFloatingState({ visible: true });
+      window.__floatingVisible = true;
+      try { const btn = document.getElementById('floating-toggle-btn'); if (btn) btn.textContent = '显示悬浮窗'; } catch (_) {}
+      return window.floatingWin;
+    }
+    try { window.logger.log('[悬浮窗] open: 开始创建窗口'); } catch (_) {}
+    window.__floatingOpening = true;
+
+    const floatingPath = './floating.html';
+    const state = getFloatingState();
+    const win = window.utools.createBrowserWindow(floatingPath, {
+      width: 300,
+      height: 200,
+      frame: false,
+      resizable: false,
+      transparent: true,
+      alwaysOnTop: true,
+      skipTaskbar: true,
+      show: false,
+      webPreferences: {
+        nodeIntegration: true,
+        contextIsolation: false,
+        sandbox: false
+      }
+    }, () => {
+      win.show();
+      win.setAlwaysOnTop(true);
+      if (state && typeof state.x === 'number' && typeof state.y === 'number') {
+        try { win.setPosition(state.x, state.y); } catch (_) {}
+      } else {
+        try { 
+          win.setPosition(
+            Math.floor((window.screen.width - 300) / 2),
+            Math.floor((window.screen.height - 200) / 2)
+          );
+        } catch (_) {}
+      }
+      startFloatingUpdateTimer();
+      try { window.pushFloatingData(); } catch (_) {}
+      persistFloatingState({ visible: true });
+      try {
+        const btn = document.getElementById('floating-toggle-btn');
+        if (btn) btn.textContent = '显示悬浮窗';
+      } catch (_) {}
+      window.__floatingVisible = true;
+      window.__floatingOpening = false;
+      try { window.logger.log('[悬浮窗] open: 创建完成并显示'); } catch (_) {}
+    });
+
+    // 监听消息与移动、关闭事件
+    win.on('message', (message) => {
+      try {
+        if (message && message.type === 'close-floating') {
+          try { window.logger.log('[悬浮窗] onMessage: 收到子窗关闭消息'); } catch (_) {}
+          // 尝试关闭，否则隐藏
+          if (win && !win.isDestroyed()) {
+            try { win.close(); } catch (_) {}
+            try { win.hide(); } catch (_) {}
+          }
+          stopFloatingUpdateTimer();
+          window.floatingWin = null;
+          persistFloatingState({ visible: false });
+          window.__floatingVisible = false;
+          try { window.__floatingWindows = (window.__floatingWindows || []).filter(w => w !== win); } catch (_) {}
+        } else if (message && message.type === 'fw-log') {
+          try {
+            const text = message.payload || ''
+            if (window.logger && window.logger.log) window.logger.log(`[悬浮窗日志] ${text}`)
+          } catch (_) {}
+        }
+      } catch (_) {}
+    });
+
+    try {
+      win.on('move', () => {
+        try {
+          const [x, y] = win.getPosition();
+          persistFloatingState({ x, y });
+          try { window.logger.log(`[悬浮窗] onMove: 位置更新 (${x}, ${y})`); } catch (_) {}
+        } catch (_) {}
+      });
+    } catch (_) {}
+
+    try {
+      win.on('closed', () => {
+        try { window.logger.log('[悬浮窗] onClosed: 触发'); } catch (_) {}
+        stopFloatingUpdateTimer();
+        window.floatingWin = null;
+        persistFloatingState({ visible: false });
+        window.__floatingVisible = false;
+        try { window.__floatingWindows = (window.__floatingWindows || []).filter(w => w !== win); } catch (_) {}
+      });
+    } catch (_) {}
+
+    window.floatingWin = win;
+    try { window.__floatingWindows.push(win); if (window.logger && window.logger.log) window.logger.log(`[悬浮窗] open: 注册实例，当前数量 ${window.__floatingWindows.length}`); } catch (_) {}
+    return win;
+  } catch (e) {
+    window.__floatingOpening = false;
+    return null;
+  }
+};
+
+/*
+ * 功能：关闭悬浮窗并停止更新
+ * 参数：无
+ * 返回值：Boolean 是否成功
+ * 创建日期：2025-12-01
+ */
+window.closeFloatingWindow = () => {
+  try {
+    if (window.logger && window.logger.log) window.logger.log('[悬浮窗] close: 开始关闭');
+    stopFloatingUpdateTimer();
+    try { window.utools && window.utools.dbStorage && window.utools.dbStorage.setItem('__floating_close_signal', String(Date.now())); } catch (_) {}
+    try { window.broadcastCloseFloatingWindows(); } catch (_) {}
+    const wins = Array.from(window.__floatingWindows || []).concat(window.floatingWin ? [window.floatingWin] : []);
+    if (window.logger && window.logger.log) window.logger.log(`[悬浮窗] close: 兜底关闭，实例数=${wins.length}`);
+    wins.forEach((w, idx) => {
+      if (!w) return;
+      try { w?.hide?.(); } catch (e) { try { window.logger.error(`[悬浮窗] hide失败 -> #${idx}`, e); } catch (_) {} }
+      try { w?.close?.(); } catch (e) { try { window.logger.error(`[悬浮窗] close失败 -> #${idx}`, e); } catch (_) {} }
+      try { (typeof w?.destroy === 'function') && w.destroy(); } catch (e) { try { window.logger.error(`[悬浮窗] destroy失败 -> #${idx}`, e); } catch (_) {} }
+    });
+  } catch (_) {}
+  window.floatingWin = null;
+  try { window.__floatingWindows = []; } catch (_) {}
+  persistFloatingState({ visible: false });
+  window.__floatingVisible = false;
+  try { const btn = document.getElementById('floating-toggle-btn'); if (btn) btn.textContent = '显示悬浮窗'; } catch (_) {}
+  try { window.logger.log('[悬浮窗] close: 完成'); } catch (_) {}
+  return true;
+};
+
+/*
+ * 功能：切换悬浮窗显示/隐藏状态
+ * 参数：无
+ * 返回值：Boolean 当前是否可见
+ * 创建日期：2025-12-01
+ */
+window.toggleFloatingWindow = () => {
+  // 检查实际的窗口状态：如果存在未销毁的窗口，无论__floatingVisible是什么，都视为可见
+  const windowExists = window.floatingWin && !window.floatingWin.isDestroyed();
+
+  if (window.__floatingVisible || windowExists) {
+    try { window.logger.log(`[悬浮窗] toggle: 执行隐藏 visible=${window.__floatingVisible}, exists=${windowExists}`); } catch (_) {}
+    window.closeFloatingWindow();
+    return false;
+  } else {
+    try { window.logger.log(`[悬浮窗] toggle: 执行显示 visible=${window.__floatingVisible}, exists=${windowExists}`); } catch (_) {}
+    window.openFloatingWindow();
+    return true;
+  }
+};
+
+/*
+ * 功能：推送数据到悬浮窗页面
+ * 参数：无
+ * 返回值：无
+ * 创建日期：2025-12-01
+ */
+window.pushFloatingData = () => {
+  try {
+    if (!window.floatingWin || window.floatingWin.isDestroyed()) return;
+    const snapshot = getTimelineSnapshot();
+    const alarms = snapshot.blocks.map(b => ({
+      id: b.id,
+      name: b.task,
+      timeText: b.timeStr,
+      remainText: b.remainText || '',
+      enabled: b.enabled,
+      statusText: b.statusText,
+      isCurrent: !!b.isCurrent
+    }));
+    const payload = { alarms, currentTaskName: snapshot.currentTaskBlock ? snapshot.currentTaskBlock.task : '' };
+    try { if (window.logger && window.logger.log) window.logger.log(`[悬浮窗] push: count=${alarms.length}, current=${payload.currentTaskName || '无'}`); } catch (_) {}
+    const js = `window.setActiveAlarms(${JSON.stringify(payload)})`;
+    window.floatingWin.webContents.executeJavaScript(js);
+  } catch (_) {}
+};
+
+/*
+ * 功能：广播关闭消息到所有悬浮窗实例
+ * 参数：无
+ * 返回值：无
+ * 创建日期：2025-12-01
+ */
+window.broadcastCloseFloatingWindows = () => {
+  try {
+    const wins = (window.__floatingWindows || []).slice();
+    if (window.logger && window.logger.log) window.logger.log(`[悬浮窗] 广播关闭，实例数=${wins.length}`);
+    wins.forEach((w, idx) => {
+      try {
+        if (window.logger && window.logger.log) window.logger.log(`[悬浮窗] 广播关闭 -> 实例#${idx}`);
+        w?.webContents?.executeJavaScript("window.utools.sendToParent({type:'close-floating'})");
+      } catch (err) {
+        if (window.logger && window.logger.error) window.logger.error(`[悬浮窗] 广播关闭失败 -> 实例#${idx}`, err);
+      }
+    });
+  } catch (_) {}
+};
+
+/*
+ * 功能：计算当前活跃闹钟数据用于悬浮窗展示
+ * 参数：无
+ * 返回值：Array<{id,name,timeText,remainText,enabled}>
+ * 创建日期：2025-12-01
+ */
+/*
+ * 功能：生成与时间轴视图一致的数据快照
+ * 参数：无
+ * 返回值：{ nowMinutes, currentTaskBlock, nextTaskBlock, blocks: Array }
+ * 创建日期：2025-12-01
+ */
+function getTimelineSnapshot() {
+  const settings = window.utools.dbStorage.getItem('globalSettings') || { globalAlertEnabled: true };
+  const blocks = window.getTimeSettings();
+  const now = new Date();
+  const nowMinutes = now.getHours() * 60 + now.getMinutes();
+  const today = now.getDay();
+
+  const enabledTodayBlocks = blocks.filter(b => {
+    if (!b) return false;
+    const enabled = (b.enabled === true) || (typeof b.enabled === 'string' && b.enabled.toLowerCase() === 'true');
+    if (!enabled) return false;
+    const mode = b.reminderMode || 'daily';
+    if (mode === 'weekly') {
+      const weekdays = b.weekdays || [];
+      return weekdays.includes(today);
+    }
+    return true;
+  });
+
+  const pastBlocks = enabledTodayBlocks.filter(b => {
+    const t = new Date(b.startTime);
+    const m = t.getHours() * 60 + t.getMinutes();
+    return m <= nowMinutes;
+  });
+
+  let currentTaskBlock = null;
+  if (pastBlocks.length > 0) {
+    currentTaskBlock = pastBlocks.reduce((latest, current) => {
+      const lm = new Date(latest.startTime);
+      const cm = new Date(current.startTime);
+      const lmin = lm.getHours() * 60 + lm.getMinutes();
+      const cmin = cm.getHours() * 60 + cm.getMinutes();
+      return cmin > lmin ? current : latest;
+    });
+  }
+
+  const futureBlocks = enabledTodayBlocks.filter(b => {
+    const tm = new Date(b.startTime);
+    const mins = tm.getHours() * 60 + tm.getMinutes();
+    return mins > nowMinutes;
+  });
+  let nextTaskBlock = null;
+  if (futureBlocks.length > 0) {
+    nextTaskBlock = futureBlocks.reduce((earliest, current) => {
+      const em = new Date(earliest.startTime);
+      const cm = new Date(current.startTime);
+      const emin = em.getHours() * 60 + em.getMinutes();
+      const cmin = cm.getHours() * 60 + cm.getMinutes();
+      return cmin < emin ? current : earliest;
+    });
+  }
+
+  const weekNames = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+  const normalized = blocks.map(block => {
+    const date = new Date(block.startTime);
+    const timeStr = `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
+    const reminderCount = block.reminderCount !== undefined ? block.reminderCount : -1;
+    const remainingCount = block.remainingCount !== undefined ? block.remainingCount : reminderCount;
+    const reminderText = reminderCount === -1 ? '永久' : `剩余${remainingCount}次`;
+    const mode = block.reminderMode || 'daily';
+    let modeText = '每日';
+    if (mode === 'weekly') {
+      const weekdays = block.weekdays || [];
+      const selected = weekdays.map(d => weekNames[d]).join('、');
+      modeText = `每周(${selected})`;
+    }
+    const isCurrent = currentTaskBlock && currentTaskBlock.id === block.id;
+    const statusText = `${(block.enabled ? '已启用' : '已禁用')} | 预提醒：${(block.preAlert ? '已启用' : '已禁用')} | 提醒：${reminderText} | 模式：${modeText}`;
+    let remainText = '';
+    const startMinutes = date.getHours() * 60 + date.getMinutes();
+    const diff = startMinutes - nowMinutes;
+    if (diff >= 0) remainText = `还有 ${diff} 分钟`;
+
+    return {
+      id: block.id,
+      task: block.task || block.id,
+      timeStr,
+      enabled: settings.globalAlertEnabled !== false && block.enabled !== false,
+      preAlert: !!block.preAlert,
+      reminderText,
+      modeText,
+      statusText,
+      isCurrent,
+      remainText,
+      sortKey: startMinutes
+    };
+  }).sort((a, b) => a.sortKey - b.sortKey);
+
+  try { if (window.logger && window.logger.log) window.logger.log(`[悬浮窗] snapshot: now=${now.getHours()}:${now.getMinutes()}, enabledToday=${enabledTodayBlocks.length}, past=${pastBlocks.length}, future=${futureBlocks.length}, current=${currentTaskBlock ? currentTaskBlock.task : '无'}`); } catch (_) {}
+  return { nowMinutes, currentTaskBlock, nextTaskBlock, blocks: normalized };
+}
+
+/*
+ * 功能：启动悬浮窗内容更新定时器（500ms）
+ * 参数：无
+ * 返回值：无
+ * 创建日期：2025-12-01
+ */
+function startFloatingUpdateTimer() {
+  if (window.floatingTimer) return;
+  window.floatingTimer = setInterval(() => {
+    window.pushFloatingData();
+  }, 500);
+}
+
+/*
+ * 功能：将当前任务快照写入桌面微件数据文件
+ * 参数：无
+ * 返回值：无
+ * 创建日期：2025-12-01
+ */
+function writeWidgetData() {
+  try {
+    const os = require('os')
+    const path = require('path')
+    const fs = require('fs')
+    const dir = path.join(os.homedir(), 'DeskClock')
+    try { fs.mkdirSync(dir, { recursive: true }) } catch (_) {}
+    const snap = getTimelineSnapshot()
+    const current = snap.currentTaskBlock ? {
+      name: snap.currentTaskBlock.task,
+      hhmm: new Date(snap.currentTaskBlock.startTime).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }),
+      elapsed: Math.max(0, (snap.nowMinutes - (new Date(snap.currentTaskBlock.startTime).getHours()*60 + new Date(snap.currentTaskBlock.startTime).getMinutes())))
+    } : null
+    const next = snap.nextTaskBlock ? {
+      name: snap.nextTaskBlock.task,
+      hhmm: new Date(snap.nextTaskBlock.startTime).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }),
+      remaining: Math.max(0, ((new Date(snap.nextTaskBlock.startTime).getHours()*60 + new Date(snap.nextTaskBlock.startTime).getMinutes()) - snap.nowMinutes))
+    } : null
+    const payload = { current, next, updatedAt: Date.now() }
+    fs.writeFileSync(path.join(dir, 'current_task.json'), JSON.stringify(payload))
+  } catch (_) {}
+}
+
+/*
+ * 功能：启动桌面微件数据同步定时器（1s）
+ * 参数：无
+ * 返回值：无
+ * 创建日期：2025-12-01
+ */
+function startWidgetSyncTimer() {
+  if (window.widgetSyncTimer) return
+  window.widgetSyncTimer = setInterval(() => {
+    writeWidgetData()
+  }, 1000)
+}
+
+/*
+ * 功能：停止悬浮窗内容更新定时器
+ * 参数：无
+ * 返回值：无
+ * 创建日期：2025-12-01
+ */
+function stopFloatingUpdateTimer() {
+  if (window.floatingTimer) {
+    clearInterval(window.floatingTimer);
+    window.floatingTimer = null;
+  }
+}
+
+/*
+ * 功能：读取悬浮窗持久化状态（localStorage）
+ * 参数：无
+ * 返回值：Object { visible?:Boolean, x?:Number, y?:Number }
+ * 创建日期：2025-12-01
+ */
+function getFloatingState() {
+  try {
+    const raw = window.localStorage.getItem('floatingWindowState');
+    return raw ? JSON.parse(raw) : { visible: false };
+  } catch (_) { return { visible: false }; }
+}
+
+/*
+ * 功能：更新悬浮窗持久化状态（localStorage）
+ * 参数：patch(Object) 包含要更新的字段
+ * 返回值：无
+ * 创建日期：2025-12-01
+ */
+function persistFloatingState(patch) {
+  try {
+    const prev = getFloatingState() || {};
+    const next = { ...prev, ...patch };
+    window.localStorage.setItem('floatingWindowState', JSON.stringify(next));
+  } catch (_) {}
+}
+
 // 进程监控
 let activeProcesses = new Set();
 
@@ -462,12 +1015,84 @@ window.isProcessRunning = (processName) => {
   return activeProcesses.has(processName.toLowerCase());
 };
 
+/*
+ * 功能：读取微件运行状态文件
+ * 参数：无
+ * 返回值：Object | null 状态内容，如 {running, pid, updatedAt, version, stage}
+ * 日期：2025-12-01
+ */
+window.readWidgetStatus = () => {
+  try {
+    const os = require('os')
+    const path = require('path')
+    const fs = require('fs')
+    const statusPath = path.join(os.homedir(), 'DeskClock', 'status.json')
+    const raw = fs.readFileSync(statusPath, 'utf-8')
+    return JSON.parse(raw)
+  } catch (_) { return null }
+}
+
+/*
+ * 功能：检测微件是否运行（进程+心跳文件）
+ * 参数：无
+ * 返回值：Boolean 是否判定为运行中
+ * 日期：2025-12-01
+ */
+window.isWidgetAlive = () => {
+  try {
+    const status = window.readWidgetStatus()
+    const byProc = window.isProcessRunning('desk-clock-widget.exe') || window.isProcessRunning('deskclockwidget.exe')
+    const byFile = !!(status && status.running && (Date.now() - (status.updatedAt || 0) < 8000))
+    return byProc || byFile
+  } catch (_) { return false }
+}
+
+/*
+ * 功能：启动微件心跳监测（2s）并在UI上提示连接状态
+ * 参数：无
+ * 返回值：无
+ * 日期：2025-12-01
+ */
+window.startWidgetHeartbeat = () => {
+  if (window.__widgetHeartbeatTimer) return
+  window.__widgetHeartbeatTimer = setInterval(() => {
+    try {
+      const alive = window.isWidgetAlive()
+      const status = window.readWidgetStatus() || {}
+      const text = alive ? `微件已连接 v${status.version || '0.0.0'}` : '微件未连接'
+      const el = document.getElementById('widget-conn-status')
+      if (el) { el.textContent = text; el.style.color = alive ? '#52c41a' : '#ff4d4f' }
+      // 如微件存活且悬浮窗可见则推送数据
+      const st = getFloatingState();
+      if (alive && st && st.visible) window.pushFloatingData()
+    } catch (_) {}
+  }, 2000)
+}
+
 // 监听窗口隐藏事件
 window.utools.onPluginOut(() => {
-  // 隐藏窗口但保持后台运行
-  document.getElementById('app').style.display = 'none';
+  window.logger.log(`[插件生命周期] onPluginOut 触发`);
+  
+  const app = document.getElementById('app');
+  if (app) {
+    const currentDisplay = app.style.display;
+    window.logger.log(`[插件生命周期] app元素当前display状态: ${currentDisplay || 'default'}`);
+    app.style.display = 'none';
+    window.logger.log(`[插件生命周期] app元素display已设置为: none`);
+  } else {
+    window.logger.error(`[插件生命周期] 未找到app元素`);
+  }
+  /*
+   * 功能：插件隐藏时暂停悬浮窗更新定时器
+   * 参数：无
+   * 返回值：无
+   * 创建日期：2025-12-01
+  */
+  
+  
+  window.logger.log(`[插件生命周期] onPluginOut 处理完成，返回false阻止退出`);
   return false; // 返回false以阻止插件退出
-});
+}); 
 
 // 提供隐藏窗口的方法
 window.hideWindow = () => {
@@ -483,6 +1108,32 @@ window.utools.onPluginReady(() => {
   if (appElement) {
     appElement.style.display = 'block';
   }
+  /*
+   * 功能：在插件就绪时根据状态显示悬浮窗
+   * 参数：无
+   * 返回值：无
+   * 创建日期：2025-12-01
+   */
+  const state = getFloatingState();
+  window.__floatingVisible = false;
+  try {
+    const cleared = { ...state, visible: false };
+    window.localStorage.setItem('floatingWindowState', JSON.stringify(cleared));
+  } catch (_) {}
+  // 初始化按钮文案
+  try {
+    const btn = document.getElementById('floating-toggle-btn');
+    if (btn) btn.textContent = '显示悬浮窗';
+  } catch (_) {}
+  /*
+   * 功能：启动桌面微件数据同步
+   * 参数：无
+   * 返回值：无
+   * 创建日期：2025-12-01
+   */
+  startWidgetSyncTimer()
+  // 启动微件心跳监测
+  try { window.startWidgetHeartbeat() } catch (_) {}
 });
 
 // 处理预提醒时间变更
@@ -499,6 +1150,10 @@ window.handlePreAlertTimeChange = () => {
     globalAlertEnabled,
     notificationType: 'popup' // 固定使用弹窗通知
   });
+  try {
+    const st = getFloatingState();
+    if (st && st.visible) window.pushFloatingData();
+  } catch (_) {}
 };
 
 window.handleAvatarUpload = () => {
@@ -641,10 +1296,10 @@ function getRandomColor() {
         const currentMinute = now.getMinutes();
         const currentTime = now.getTime();
   
-        window.logger.log(`[时间检查] 当前时间: ${currentHour}:${currentMinute}`);
+        window.logger.debug(`[时间检查] 当前时间: ${currentHour}:${currentMinute}`);
         this.timeBlocks = window.getTimeSettings();
         let hasUpdates = false;
-  
+
         const settings = window.utools.dbStorage.getItem('globalSettings') || {
           preAlertTime: 3,
           preAlertCount: 1,
@@ -661,8 +1316,8 @@ function getRandomColor() {
           const totalBlockMinutes = blockHour * 60 + blockMinute;
           const totalCurrentMinutes = currentHour * 60 + currentMinute;
           const timeDiff = totalBlockMinutes - totalCurrentMinutes;
-  
-          window.logger.log(`[时间检查] 检查时间块: ${block.task}, 预定时间: ${blockHour}:${blockMinute} 总分钟差: ${timeDiff}`);
+
+          window.logger.debug(`[时间检查] 检查时间块: ${block.task}, 预定时间: ${blockHour}:${blockMinute} 总分钟差: ${timeDiff}`);
   
           // 检查预提醒条件
           if (block.preAlert && timeDiff > 0 && timeDiff <= settings.preAlertTime) {
@@ -675,14 +1330,14 @@ function getRandomColor() {
               // 检查今天是否在选定的星期内
               const weekdays = block.weekdays || [];
               shouldPreAlert = weekdays.includes(currentWeekday);
-              window.logger.log(`[时间检查] 预提醒星期检查: ${block.task}, 当前星期: ${currentWeekday}, 选定星期: ${weekdays}, 是否预提醒: ${shouldPreAlert}`);
+              window.logger.debug(`[时间检查] 预提醒星期检查: ${block.task}, 当前星期: ${currentWeekday}, 选定星期: ${weekdays}, 是否预提醒: ${shouldPreAlert}`);
             }
             
             if (shouldPreAlert) {
               const lastPreAlertTime = lastPreAlertTimes.get(block.id) || 0;
               const lastRemaining = lastRemainingMinutes.get(block.id) || 0;
               const preAlertInterval = Math.floor(settings.preAlertTime / settings.preAlertCount);
-              window.logger.log(`[时间检查] 检查预提醒条件: ${block.task}, 剩余${timeDiff}分钟, 上次提醒时间: ${lastPreAlertTime}, 上次剩余: ${lastRemaining}`)
+              window.logger.debug(`[时间检查] 检查预提醒条件: ${block.task}, 剩余${timeDiff}分钟, 上次提醒时间: ${lastPreAlertTime}, 上次剩余: ${lastRemaining}`)
               if (lastRemaining !== timeDiff && 
                   currentTime - lastPreAlertTime >= preAlertInterval * 60000 && 
                   settings.preAlertCount > lastPreAlertTimes.size) {
@@ -693,7 +1348,7 @@ function getRandomColor() {
                 hasUpdates = true;
               }
             } else {
-              window.logger.log(`[时间检查] 今天不在预提醒星期范围内: ${block.task}，跳过预提醒`);
+              window.logger.debug(`[时间检查] 今天不在预提醒星期范围内: ${block.task}，跳过预提醒`);
             }
           }
   
@@ -708,11 +1363,11 @@ function getRandomColor() {
               // 检查今天是否在选定的星期内
               const weekdays = block.weekdays || [];
               shouldAlert = weekdays.includes(currentWeekday);
-              window.logger.log(`[时间检查] 星期提醒模式: ${block.task}, 当前星期: ${currentWeekday}, 选定星期: ${weekdays}, 是否提醒: ${shouldAlert}`);
+              window.logger.debug(`[时间检查] 星期提醒模式: ${block.task}, 当前星期: ${currentWeekday}, 选定星期: ${weekdays}, 是否提醒: ${shouldAlert}`);
             }
             
             if (!shouldAlert) {
-              window.logger.log(`[时间检查] 今天不在提醒星期范围内: ${block.task}，跳过提醒`);
+              window.logger.debug(`[时间检查] 今天不在提醒星期范围内: ${block.task}，跳过提醒`);
               return;
             }
             
@@ -758,7 +1413,7 @@ function getRandomColor() {
               hasUpdates = true;
               window.logger.log(`[时间检查] 重置时间块: ${block.task}, 下次提醒时间: ${new Date(block.startTime).toLocaleString()}`);
             } else {
-              window.logger.log(`[时间检查] 今天已经提醒过或间隔太短: ${block.task}，跳过提醒`);
+              window.logger.debug(`[时间检查] 今天已经提醒过或间隔太短: ${block.task}，跳过提醒`);
             }
   
           }

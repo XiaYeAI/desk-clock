@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>微件设置</title>
+  <style>
+    html,body{margin:0;padding:0;background:rgba(30,30,30,.95);color:#fff;font-family:system-ui;border-radius:12px;overflow:hidden}
+    .wrap{padding:20px}
+    .row{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+    .btn{padding:8px 16px;border:0;border-radius:6px;background:#444;color:#fff;cursor:pointer;font-size:13px}
+    .btn:hover{background:#555}
+    .btn:active{background:#333}
+    label{font-size:14px;color:#ddd}
+    input[type=checkbox]{transform:scale(1.2);margin:0}
+    input[type=range]{width:120px}
+    select{background:#444;color:#fff;border:0;padding:4px;border-radius:4px}
+    /* 拖拽区域 */
+    .drag-area {
+      position:absolute;top:0;left:0;right:0;height:24px;-webkit-app-region:drag;
+    }
+  </style>
+</head>
+<body>
+  <div class="drag-area"></div>
+  <div class="wrap">
+    <div class="row"><label>透明度</label><input type="range" id="opacity" min="0.3" max="1" step="0.05" value="0.7"></div>
+    <div class="row"><label>显示密度</label><select id="density"><option value="standard">标准</option><option value="compact">紧凑</option></select></div>
+    <div class="row"><label>置顶策略</label><select id="topmode"><option value="always">始终</option><option value="work">仅工作时</option><option value="never">从不</option></select></div>
+    <div class="row"><label>锁定位置</label><input type="checkbox" id="lock"></div>
+    <div class="row"><label>吸附隐藏</label><input type="checkbox" id="autoHide"></div>
+    <div class="row"><label>把手宽度</label><input type="range" id="handleWidth" min="4" max="12" step="1" value="6"></div>
+    <div class="row"><label>开机自启</label><input type="checkbox" id="autoLaunch"></div>
+    <div class="row" style="margin-top:24px;justify-content:flex-end;gap:12px">
+      <button class="btn" id="save">保存</button>
+      <button class="btn" id="close">关闭</button>
+    </div>
+  </div>
+  <script>
+    /*
+     * 功能: 初始化设置页并绑定事件（同步绑定，异步加载数据）
+     * 参数: 无
+     * 返回值: 无
+     * 日期: 2025-12-02
+     */
+    const { ipcRenderer } = require('electron')
+    
+    // 立即绑定事件，防止数据加载阻塞导致点击无效
+    try {
+      const el = (id) => document.getElementById(id)
+      
+      // 实时生效的设置
+      el('opacity').oninput = (e) => ipcRenderer.send('widget:set-opacity', e.target.value)
+      el('density').onchange = (e) => ipcRenderer.send('widget:set-density', e.target.value)
+      el('topmode').onchange = (e) => ipcRenderer.send('widget:set-topmode', e.target.value)
+      el('lock').onchange = (e) => ipcRenderer.send('widget:set-lock', e.target.checked)
+      el('autoLaunch').onchange = (e) => ipcRenderer.send('widget:set-autolaunch', e.target.checked)
+      el('autoHide').onchange = (e) => ipcRenderer.send('widget:set-autohide', e.target.checked)
+      el('handleWidth').oninput = (e) => ipcRenderer.send('widget:set-handlewidth', e.target.value)
+
+      // 按钮事件
+      el('save').onclick = () => {
+        ipcRenderer.send('widget:close-settings')
+        window.close()
+      }
+      el('close').onclick = () => {
+        ipcRenderer.send('widget:close-settings')
+        window.close()
+      }
+      
+      document.onkeydown = (ev) => {
+        if (ev.key === 'Escape') {
+          ipcRenderer.send('widget:close-settings')
+          window.close()
+        }
+      }
+
+      // 异步加载初始状态
+      ipcRenderer.invoke('widget:get-state').then(st => {
+        if (!st) return
+        el('opacity').value = String(st.opacity || 0.7)
+        el('density').value = st.density || 'standard'
+        el('topmode').value = st.topMode || 'always'
+        el('lock').checked = !!st.lockPosition
+        el('autoHide').checked = !!st.autoHide
+        el('handleWidth').value = String(st.handleWidth || 6)
+        el('autoLaunch').checked = !!st.autoLaunch
+      }).catch(console.error)
+
+    } catch(err){
+      console.error(err)
+    }
+  </script>
+</body>
+</html>

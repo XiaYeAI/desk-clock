@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DeskClock Widget</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <div class="card" id="card-root">
+    <div class="drag-handle"></div>
+    <div class="content">
+      <div class="current" id="current">暂无进行中的任务</div>
+    </div>
+    <div class="handle" id="edge-handle" title="展开"></div>
+  </div>
+
+  <script>
+    /*
+     * 功能：初始化渲染并绑定数据通道
+     * 参数：无
+     * 返回值：无
+     * 创建日期：2025-12-01
+     */
+    (function init(){
+      const cur = document.getElementById('current')
+      const card = document.getElementById('card-root')
+      const handle = document.getElementById('edge-handle')
+
+      function render(data){
+        try {
+          const c = data && data.current
+          const name = c && c.name ? c.name : '暂无进行中的任务'
+          cur.textContent = name
+        } catch(_){}
+      }
+
+      try { window.widgetAPI && window.widgetAPI.onData(render) } catch(_){}
+      
+      // 自定义拖拽逻辑（替换 webkit-app-region: drag 以支持右键菜单）
+      let isDragging = false
+      document.body.addEventListener('pointerdown', (e) => {
+        // 仅左键点击且非把手元素（把手有自己的点击事件）
+        if (e.button === 0 && e.target.id !== 'edge-handle') {
+          isDragging = true
+          e.target.setPointerCapture(e.pointerId)
+          try { window.widgetAPI.startDrag() } catch(_){}
+        }
+      })
+      document.body.addEventListener('pointermove', (e) => {
+        if (isDragging) {
+           try { window.widgetAPI.dragging() } catch(_){}
+        }
+      })
+      document.body.addEventListener('pointerup', (e) => {
+        if (isDragging) {
+          isDragging = false
+          e.target.releasePointerCapture(e.pointerId)
+          try { window.widgetAPI.endDrag() } catch(_){}
+        }
+      })
+
+      // 位置持久化与吸附由主进程在 'move' 事件中处理
+
+      // 右键菜单触发(仅卡片区域内触发，排除把手)
+      card.addEventListener('contextmenu', (e) => {
+        if (e.target && e.target.id === 'edge-handle') return
+        e.preventDefault()
+        try { window.widgetAPI && window.widgetAPI.openContextMenu() } catch(_){}
+      })
+
+      // 吸附隐藏：根据主进程的边缘与隐藏状态更新把手位置与宽度
+      function applyEdge(edge){
+        try {
+          if (!handle) return
+          if (edge === 'left') { handle.style.left = 'auto'; handle.style.right = '0' }
+          else if (edge === 'right') { handle.style.right = 'auto'; handle.style.left = '0' }
+          else { handle.style.left = 'auto'; handle.style.right = 'auto' }
+        } catch(_){}
+      }
+      function applyHidden(hidden, width){
+        try {
+          if (!handle) return
+          handle.style.display = hidden ? 'block' : 'none'
+          if (width) handle.style.width = `${Math.max(4, Math.min(12, Number(width))) }px`
+        } catch(_){}
+      }
+      try { window.widgetAPI && window.widgetAPI.onEdge(applyEdge) } catch(_){}
+      try { window.widgetAPI && window.widgetAPI.onHidden(applyHidden) } catch(_){}
+
+      // 把手交互：点击展开（移除 mouseenter 以防拖拽后误触闪烁）
+      try {
+        handle.addEventListener('click', () => { try { window.widgetAPI.expand() } catch(_){} })
+        handle.addEventListener('mouseenter', () => { try { window.widgetAPI.hoverHandle(true) } catch(_){} })
+        handle.addEventListener('mouseleave', () => { try { window.widgetAPI.hoverHandle(false) } catch(_){} })
+      } catch(_){}
+    })()
+  </script>
+</body>
+</html>
