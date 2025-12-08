@@ -133,25 +133,27 @@ class LogManager {
    * 更新日期：2025-01-16 - 添加文件日志支持和debug方法
    */
   initLogger() {
-    if (this.isDevelopment) {
-      // 开发环境：保持所有日志输出
-      this.log = console.log.bind(console);
-      this.error = console.error.bind(console);
-      this.warn = console.warn.bind(console);
-      this.info = console.info.bind(console);
-      this.debug = console.debug.bind(console);
-    } else {
-      // 生产环境：控制台静默，但写入文件
-      this.log = (...args) => this.writeToFile('INFO', ...args);
-      this.error = (...args) => {
-        console.error(...args); // 错误日志仍然在控制台显示
+    // 强制开启所有日志输出到控制台，方便调试
+    this.log = (...args) => {
+        console.log(...args);
+        this.writeToFile('INFO', ...args);
+    };
+    this.error = (...args) => {
+        console.error(...args);
         this.writeToFile('ERROR', ...args);
-      };
-      this.warn = (...args) => this.writeToFile('WARN', ...args);
-      this.info = (...args) => this.writeToFile('INFO', ...args);
-      // debug方法在生产环境下完全静默，不写入文件
-      this.debug = () => {};
-    }
+    };
+    this.warn = (...args) => {
+        console.warn(...args);
+        this.writeToFile('WARN', ...args);
+    };
+    this.info = (...args) => {
+        console.info(...args);
+        this.writeToFile('INFO', ...args);
+    };
+    this.debug = (...args) => {
+        console.debug(...args);
+        this.writeToFile('DEBUG', ...args);
+    };
   }
 
   /**
@@ -175,8 +177,6 @@ class LogManager {
 
 // 创建全局日志管理器实例
 window.logger = new LogManager();
-
-// 输出环境信息和日志文件路径
 window.logger.log(`[日志管理器] 当前运行环境: ${window.logger.getEnvironmentInfo()}`);
 if (window.logger.getLogFilePath()) {
   window.logger.log(`[日志管理器] 日志文件路径: ${window.logger.getLogFilePath()}`);
@@ -199,9 +199,20 @@ function initStorage() {
       preAlertTime: 3,
       preAlertCount: 1,
       globalAlertEnabled: true,
-      notificationType: 'popup' // 'popup' - 弹窗通知, 'system' - 系统通知
+      notificationType: 'popup', // 'popup' - 弹窗通知, 'system' - 系统通知
+      floatingOpacity: 0.8 // 悬浮窗透明度
     };
     window.utools.dbStorage.setItem('globalSettings', globalSettings);
+  } else {
+    // 检查并补全缺失的配置项
+    let needUpdate = false;
+    if (globalSettings.floatingOpacity === undefined) {
+        globalSettings.floatingOpacity = 0.8;
+        needUpdate = true;
+    }
+    if (needUpdate) {
+        window.utools.dbStorage.setItem('globalSettings', globalSettings);
+    }
   }
   
   // 初始化头像和铃声配置
@@ -226,6 +237,15 @@ function initUIAndTheme() {
     preAlertTimeInput.value = settings.preAlertTime;
     preAlertCountInput.value = settings.preAlertCount;
     globalAlertToggle.value = settings.globalAlertEnabled ? 'true' : 'false';
+
+    // 初始化悬浮窗透明度滑块
+    const floatingOpacityInput = document.getElementById('floating-opacity');
+    const opacityValueDisplay = document.getElementById('opacity-value');
+    if (floatingOpacityInput && opacityValueDisplay) {
+        const opacity = settings.floatingOpacity !== undefined ? settings.floatingOpacity : 0.8;
+        floatingOpacityInput.value = opacity;
+        opacityValueDisplay.textContent = opacity;
+    }
   }
   
   
@@ -575,6 +595,47 @@ if (typeof window.__floatingVisible === 'undefined') window.__floatingVisible = 
 if (typeof window.__floatingOpening === 'undefined') window.__floatingOpening = false;
 if (typeof window.__floatingWindows === 'undefined') window.__floatingWindows = [];
 
+// 监听来自悬浮窗的操作请求（如移动窗口）
+ipcRenderer.on('widget-action', (event, action) => {
+    // 注意：这里使用 window.floatingWin 变量
+    if (!window.floatingWin || window.floatingWin.isDestroyed()) {
+        // console.warn('[Main] 收到 widget-action 但悬浮窗不存在或已销毁');
+        return;
+    }
+
+    try {
+        if (action.type === 'move') {
+            const { x, y } = action;
+            // console.log(`[Main] 移动窗口到: ${x}, ${y}`);
+            window.floatingWin.setPosition(Math.round(x), Math.round(y));
+        }
+    } catch (e) {
+        // console.error('处理悬浮窗操作失败', e);
+    }
+});
+
+/*
+ * 功能：处理悬浮窗透明度变更
+ * 参数：value - 透明度值 (0.1 - 1.0)
+ * 创建日期：2025-12-05
+ */
+window.handleFloatingOpacityChange = (value) => {
+    const settings = window.utools.dbStorage.getItem('globalSettings') || {};
+    const opacity = parseFloat(value);
+    settings.floatingOpacity = opacity;
+    window.utools.dbStorage.setItem('globalSettings', settings);
+    
+    // 实时更新悬浮窗透明度 - 通过 IPC 发送给页面 CSS 控制
+    // 避免直接使用 win.setOpacity 导致 Windows 下透明窗口渲染问题
+    if (window.floatingWin && !window.floatingWin.isDestroyed()) {
+        // window.floatingWin.setOpacity(opacity); // 禁用原生方法
+        ipcRenderer.sendTo(window.floatingWin.webContents.id, 'widget-message', {
+            type: 'update-opacity',
+            value: opacity
+        });
+    }
+};
+
 /*
  * 功能：创建并显示悬浮窗
  * 参数：无
@@ -584,11 +645,28 @@ if (typeof window.__floatingWindows === 'undefined') window.__floatingWindows = 
 window.openFloatingWindow = () => {
   try {
     if (window.__floatingOpening) return window.floatingWin || null;
+
+    // 1. 清理可能存在的"孤儿"窗口 (即引用丢失但实际存在的窗口)
+    // 这是解决"多开窗口"问题的关键：如果引用丢失，我们通过 ID 强制关闭旧窗口
+    try {
+        const orphanId = localStorage.getItem('floating_window_id');
+        if (orphanId) {
+            const id = parseInt(orphanId);
+            if (!isNaN(id)) {
+                window.logger.log(`[悬浮窗] open: 尝试清理孤儿窗口 ID=${id}`);
+                ipcRenderer.sendTo(id, 'force-close');
+            }
+            localStorage.removeItem('floating_window_id');
+        }
+    } catch (e) {
+        console.error('清理孤儿窗口失败', e);
+    }
+
     // 检查是否存在未销毁的窗口，无论__floatingVisible是什么
     if (window.floatingWin && !window.floatingWin.isDestroyed()) {
       try { window.logger.log('[悬浮窗] open: 已存在窗口，执行show'); } catch (_) {}
       window.floatingWin.show();
-      startFloatingUpdateTimer();
+      // startFloatingUpdateTimer(); // 移除定时器
       persistFloatingState({ visible: true });
       window.__floatingVisible = true;
       try { const btn = document.getElementById('floating-toggle-btn'); if (btn) btn.textContent = '显示悬浮窗'; } catch (_) {}
@@ -597,97 +675,198 @@ window.openFloatingWindow = () => {
     try { window.logger.log('[悬浮窗] open: 开始创建窗口'); } catch (_) {}
     window.__floatingOpening = true;
 
-    const floatingPath = './floating.html';
     const state = getFloatingState();
+    const settings = window.utools.dbStorage.getItem('globalSettings') || {};
+    let opacity = parseFloat(settings.floatingOpacity);
+    if (isNaN(opacity)) opacity = 0.8;
+    // 确保透明度在合理范围内
+    opacity = Math.max(0.1, Math.min(1.0, opacity));
+
+    const floatingPath = `./floating.html?opacity=${opacity}`;
+    
+    try { window.logger.log(`[悬浮窗] open: 准备创建，设置透明度=${opacity}`); } catch (_) {}
+
+    // 强制重置标志位防止死锁
+    if (window.__floatingOpenTimeout) clearTimeout(window.__floatingOpenTimeout);
+    window.__floatingOpenTimeout = setTimeout(() => {
+        window.__floatingOpening = false;
+    }, 5000);
+
     const win = window.utools.createBrowserWindow(floatingPath, {
       width: 300,
-      height: 200,
+      // opacity: opacity, // 暂时移除透明度设置，排查是否透明度叠加导致不可见
+      height: 45, 
       frame: false,
       resizable: false,
       transparent: true,
+      backgroundColor: '#00000000', // 显式设置背景透明
       alwaysOnTop: true,
       skipTaskbar: true,
       show: false,
+      useContentSize: true,  // 统一以内容尺寸为准，搭配 setContentBounds
+      thickFrame: false,     // 显式禁用 Windows 系统边框
+      hasShadow: false,      // 禁用阴影，减少非客户区影响
       webPreferences: {
+        preload: 'floating_preload.js',
         nodeIntegration: true,
         contextIsolation: false,
-        sandbox: false
+        sandbox: false,
+        backgroundThrottling: false // 禁用后台节流，防止渲染暂停
       }
     }, () => {
-      win.show();
-      win.setAlwaysOnTop(true);
-      if (state && typeof state.x === 'number' && typeof state.y === 'number') {
-        try { win.setPosition(state.x, state.y); } catch (_) {}
-      } else {
-        try { 
-          win.setPosition(
-            Math.floor((window.screen.width - 300) / 2),
-            Math.floor((window.screen.height - 200) / 2)
-          );
-        } catch (_) {}
-      }
-      startFloatingUpdateTimer();
-      try { window.pushFloatingData(); } catch (_) {}
-      persistFloatingState({ visible: true });
+      // 这里的 callback 可能在窗口创建失败时也会被调用（视 uTools 实现而定），或者根本不调用
+      // 所以必须要有 try-catch 和空值检查
       try {
-        const btn = document.getElementById('floating-toggle-btn');
-        if (btn) btn.textContent = '显示悬浮窗';
-      } catch (_) {}
-      window.__floatingVisible = true;
-      window.__floatingOpening = false;
-      try { window.logger.log('[悬浮窗] open: 创建完成并显示'); } catch (_) {}
+          if (window.__floatingOpenTimeout) clearTimeout(window.__floatingOpenTimeout);
+          
+          if (!win) {
+              window.logger.error('[悬浮窗] open: 窗口对象为空，创建失败');
+              window.__floatingOpening = false;
+              return;
+          }
+
+          // 记录窗口 ID 以便后续防重
+          if (win.webContents) {
+              localStorage.setItem('floating_window_id', win.webContents.id.toString());
+          }
+
+          // 移除可能导致冲突的尺寸锁定
+          // win.setMinimumSize(300, 45);
+          // win.setMaximumSize(300, 45);
+
+          // 定义显示逻辑
+          const showWindow = () => {
+              if (!win || win.isDestroyed()) return;
+              try {
+                  const bounds = win.getBounds();
+                  const contentBounds = win.getContentBounds();
+                  // 移除调试日志
+
+                  // 强制设置缩放比例为 1.0，防止误触缩放
+                  try { win.webContents.setZoomFactor(1.0); } catch(_) {}
+
+                  // 先设置位置
+                  if (state && typeof state.x === 'number' && typeof state.y === 'number') {
+                      win.setPosition(state.x, state.y);
+                  } else {
+                      win.setPosition(
+                          Math.floor((window.screen.width - 300) / 2),
+                          Math.floor((window.screen.height - 200) / 2)
+                      );
+                  }
+
+                  // 核心修复：先 show 再 setOpacity
+                  // 使用 setTimeout 略微延迟，避开 Electron 透明窗口渲染 Bug
+                  setTimeout(() => {
+                      if (!win || win.isDestroyed()) return;
+                      win.show();
+                      // win.setOpacity(opacity); // 移除，改用 CSS 控制
+                      win.setAlwaysOnTop(true);
+                      window.logger.log(`[悬浮窗] open: 窗口已显示，初始透明度=${opacity}`);
+                  }, 100);
+                  
+              } catch (e) {
+                  window.logger.error(`[悬浮窗] 显示窗口失败`, e);
+              }
+          };
+
+          // 尝试使用 ready-to-show 事件，如果不可用则直接调用
+          if (win.once) {
+              win.once('ready-to-show', showWindow);
+              // 兜底：500ms 后强制显示
+              setTimeout(() => {
+                  if (win && !win.isDestroyed() && !win.isVisible()) {
+                      window.logger.log('[悬浮窗] open: ready-to-show 超时，强制显示');
+                      showWindow();
+                  }
+              }, 500);
+          } else {
+              showWindow();
+          }
+
+          // startFloatingUpdateTimer(); // 移除定时器
+          try { window.pushFloatingData(); } catch (_) {} // 立即推送一次数据
+          persistFloatingState({ visible: true });
+          try {
+            const btn = document.getElementById('floating-toggle-btn');
+            if (btn) btn.textContent = '显示悬浮窗';
+          } catch (_) {}
+          
+          window.__floatingVisible = true;
+          
+          // 建立 IPC 连接
+          setTimeout(() => {
+              if(win && !win.isDestroyed()) {
+                  ipcRenderer.sendTo(win.webContents.id, 'widget-message', 'connect');
+              }
+          }, 500);
+
+          try { window.logger.log('[悬浮窗] open: 创建流程结束'); } catch (_) {}
+      } catch (err) {
+          window.logger.error('[悬浮窗] open: 回调执行出错', err);
+      } finally {
+          window.__floatingOpening = false;
+      }
     });
 
     // 监听消息与移动、关闭事件
-    win.on('message', (message) => {
-      try {
-        if (message && message.type === 'close-floating') {
-          try { window.logger.log('[悬浮窗] onMessage: 收到子窗关闭消息'); } catch (_) {}
-          // 尝试关闭，否则隐藏
-          if (win && !win.isDestroyed()) {
-            try { win.close(); } catch (_) {}
-            try { win.hide(); } catch (_) {}
-          }
-          stopFloatingUpdateTimer();
-          window.floatingWin = null;
-          persistFloatingState({ visible: false });
-          window.__floatingVisible = false;
-          try { window.__floatingWindows = (window.__floatingWindows || []).filter(w => w !== win); } catch (_) {}
-        } else if (message && message.type === 'fw-log') {
-          try {
-            const text = message.payload || ''
-            if (window.logger && window.logger.log) window.logger.log(`[悬浮窗日志] ${text}`)
-          } catch (_) {}
+    // 注意：在某些 uTools 版本中，win.on 可能不可用，因此我们需要做容错处理
+    // 并优先使用全局 ipcRenderer 监听 widget-action
+    try {
+        if (typeof win.on === 'function') {
+            win.on('message', (message) => {
+              try {
+                if (message && message.type === 'close-floating') {
+                  // 关闭消息
+                  window.closeFloatingWindow();
+                } else if (message && message.type === 'widget-action') {
+                   if (message.payload && message.payload.type === 'move') {
+            const { x, y } = message.payload;
+            // 处理移动，无调试日志
+            try {
+                // 使用 setBounds 并强制重置大小，配合 useContentSize: false 和 thickFrame: false
+                win.setBounds({
+                    x: Math.round(x),
+                    y: Math.round(y),
+                    width: 300,
+                    height: 45
+                });
+            } catch (_) {}
         }
-      } catch (_) {}
-    });
+                }
+              } catch (_) {}
+            });
 
-    try {
-      win.on('move', () => {
-        try {
-          const [x, y] = win.getPosition();
-          persistFloatingState({ x, y });
-          try { window.logger.log(`[悬浮窗] onMove: 位置更新 (${x}, ${y})`); } catch (_) {}
-        } catch (_) {}
-      });
-    } catch (_) {}
+            win.on('move', () => {
+                try {
+                  const [x, y] = win.getPosition();
+                  persistFloatingState({ x, y });
+                } catch (_) {}
+            });
 
-    try {
-      win.on('closed', () => {
-        try { window.logger.log('[悬浮窗] onClosed: 触发'); } catch (_) {}
-        stopFloatingUpdateTimer();
-        window.floatingWin = null;
-        persistFloatingState({ visible: false });
-        window.__floatingVisible = false;
-        try { window.__floatingWindows = (window.__floatingWindows || []).filter(w => w !== win); } catch (_) {}
-      });
-    } catch (_) {}
+            // 移除调试用 resize 日志
+
+            win.on('closed', () => {
+                try { window.logger.log('[悬浮窗] onClosed: 触发'); } catch (_) {}
+                window.floatingWin = null;
+                persistFloatingState({ visible: false });
+                window.__floatingVisible = false;
+                try { window.__floatingWindows = (window.__floatingWindows || []).filter(w => w !== win); } catch (_) {}
+            });
+        } else {
+             window.logger.log('[Main] 警告: win.on 不可用，将依赖全局 IPC');
+        }
+    } catch (e) {
+        window.logger.error('[Main] 绑定窗口事件失败', e);
+    }
 
     window.floatingWin = win;
     try { window.__floatingWindows.push(win); if (window.logger && window.logger.log) window.logger.log(`[悬浮窗] open: 注册实例，当前数量 ${window.__floatingWindows.length}`); } catch (_) {}
+    console.log('[Main] 悬浮窗创建成功', win.webContents ? win.webContents.id : 'unknown ID');
     return win;
   } catch (e) {
     window.__floatingOpening = false;
+    console.error('[Main] 创建悬浮窗失败', e);
     return null;
   }
 };
@@ -704,13 +883,38 @@ window.closeFloatingWindow = () => {
     stopFloatingUpdateTimer();
     try { window.utools && window.utools.dbStorage && window.utools.dbStorage.setItem('__floating_close_signal', String(Date.now())); } catch (_) {}
     try { window.broadcastCloseFloatingWindows(); } catch (_) {}
+    
+    // 尝试通过 ID 关闭可能存在的孤儿窗口
+    try {
+        const orphanId = localStorage.getItem('floating_window_id');
+        if (orphanId) {
+             const id = parseInt(orphanId);
+             if (!isNaN(id)) ipcRenderer.sendTo(id, 'force-close');
+             localStorage.removeItem('floating_window_id');
+        }
+    } catch (_) {}
+
     const wins = Array.from(window.__floatingWindows || []).concat(window.floatingWin ? [window.floatingWin] : []);
     if (window.logger && window.logger.log) window.logger.log(`[悬浮窗] close: 兜底关闭，实例数=${wins.length}`);
     wins.forEach((w, idx) => {
       if (!w) return;
-      try { w?.hide?.(); } catch (e) { try { window.logger.error(`[悬浮窗] hide失败 -> #${idx}`, e); } catch (_) {} }
-      try { w?.close?.(); } catch (e) { try { window.logger.error(`[悬浮窗] close失败 -> #${idx}`, e); } catch (_) {} }
-      try { (typeof w?.destroy === 'function') && w.destroy(); } catch (e) { try { window.logger.error(`[悬浮窗] destroy失败 -> #${idx}`, e); } catch (_) {} }
+      // 定义忽略 "window no exist" 错误的辅助函数
+      const safeExec = (fn, name) => {
+          try {
+              fn();
+          } catch (e) {
+              const msg = String(e);
+              if (msg.includes('window no exist') || msg.includes('Object has been destroyed')) {
+                  // 窗口已销毁，忽略此类错误
+                  return;
+              }
+              try { window.logger.error(`[悬浮窗] ${name}失败 -> #${idx}`, e); } catch (_) {}
+          }
+      };
+
+      safeExec(() => w.hide && w.hide(), 'hide');
+      safeExec(() => w.close && w.close(), 'close');
+      safeExec(() => w.destroy && w.destroy(), 'destroy');
     });
   } catch (_) {}
   window.floatingWin = null;
@@ -751,7 +955,7 @@ window.toggleFloatingWindow = () => {
  */
 window.pushFloatingData = () => {
   try {
-    if (!window.floatingWin || window.floatingWin.isDestroyed()) return;
+    // 无论窗口是否打开，都更新 localStorage 数据，以便悬浮窗独立读取
     const snapshot = getTimelineSnapshot();
     const alarms = snapshot.blocks.map(b => ({
       id: b.id,
@@ -763,9 +967,20 @@ window.pushFloatingData = () => {
       isCurrent: !!b.isCurrent
     }));
     const payload = { alarms, currentTaskName: snapshot.currentTaskBlock ? snapshot.currentTaskBlock.task : '' };
+    
+    try {
+        localStorage.setItem('floating_task_data', JSON.stringify(payload));
+    } catch (_) {}
+
+    if (!window.floatingWin || window.floatingWin.isDestroyed()) return;
+
     try { if (window.logger && window.logger.log) window.logger.log(`[悬浮窗] push: count=${alarms.length}, current=${payload.currentTaskName || '无'}`); } catch (_) {}
-    const js = `window.setActiveAlarms(${JSON.stringify(payload)})`;
-    window.floatingWin.webContents.executeJavaScript(js);
+    
+    // IPC 发送
+    if (window.floatingWin && window.floatingWin.webContents) {
+         // console.log(`[Main] 推送数据到悬浮窗 (ID: ${window.floatingWin.webContents.id})`);
+         ipcRenderer.sendTo(window.floatingWin.webContents.id, 'widget-message', payload);
+    }
   } catch (_) {}
 };
 
@@ -890,21 +1105,18 @@ function getTimelineSnapshot() {
     };
   }).sort((a, b) => a.sortKey - b.sortKey);
 
-  try { if (window.logger && window.logger.log) window.logger.log(`[悬浮窗] snapshot: now=${now.getHours()}:${now.getMinutes()}, enabledToday=${enabledTodayBlocks.length}, past=${pastBlocks.length}, future=${futureBlocks.length}, current=${currentTaskBlock ? currentTaskBlock.task : '无'}`); } catch (_) {}
+  // try { if (window.logger && window.logger.log) window.logger.log(`[悬浮窗] snapshot: now=${now.getHours()}:${now.getMinutes()}, enabledToday=${enabledTodayBlocks.length}, past=${pastBlocks.length}, future=${futureBlocks.length}, current=${currentTaskBlock ? currentTaskBlock.task : '无'}`); } catch (_) {}
   return { nowMinutes, currentTaskBlock, nextTaskBlock, blocks: normalized };
 }
 
 /*
- * 功能：启动悬浮窗内容更新定时器（500ms）
- * 参数：无
- * 返回值：无
- * 创建日期：2025-12-01
+ * 功能：启动悬浮窗内容更新定时器（已废弃，跟随主循环）
  */
 function startFloatingUpdateTimer() {
-  if (window.floatingTimer) return;
-  window.floatingTimer = setInterval(() => {
-    window.pushFloatingData();
-  }, 500);
+  // if (window.floatingTimer) return;
+  // window.floatingTimer = setInterval(() => {
+  //   window.pushFloatingData();
+  // }, 500);
 }
 
 /*
@@ -936,30 +1148,16 @@ function writeWidgetData() {
   } catch (_) {}
 }
 
-/*
- * 功能：启动桌面微件数据同步定时器（1s）
- * 参数：无
- * 返回值：无
- * 创建日期：2025-12-01
- */
-function startWidgetSyncTimer() {
-  if (window.widgetSyncTimer) return
-  window.widgetSyncTimer = setInterval(() => {
-    writeWidgetData()
-  }, 1000)
-}
+// 已移除：桌面微件数据同步定时器
 
 /*
- * 功能：停止悬浮窗内容更新定时器
- * 参数：无
- * 返回值：无
- * 创建日期：2025-12-01
+ * 功能：停止悬浮窗内容更新定时器（已废弃）
  */
 function stopFloatingUpdateTimer() {
-  if (window.floatingTimer) {
-    clearInterval(window.floatingTimer);
-    window.floatingTimer = null;
-  }
+  // if (window.floatingTimer) {
+  //   clearInterval(window.floatingTimer);
+  //   window.floatingTimer = null;
+  // }
 }
 
 /*
@@ -990,30 +1188,7 @@ function persistFloatingState(patch) {
 }
 
 // 进程监控
-let activeProcesses = new Set();
-
-function checkActiveProcesses() {
-  exec('tasklist /fo csv /nh', (error, stdout) => {
-    if (error) return;
-    
-    const processes = stdout.split('\n')
-      .map(line => {
-        const match = line.match(/"([^"]+)"/);
-        return match ? match[1].toLowerCase() : null;
-      })
-      .filter(Boolean);
-
-    activeProcesses = new Set(processes);
-  });
-}
-
-// 定时检查进程
-setInterval(checkActiveProcesses, 5000);
-
-// 导出进程检查方法
-window.isProcessRunning = (processName) => {
-  return activeProcesses.has(processName.toLowerCase());
-};
+// 已移除：进程监控与导出方法
 
 /*
  * 功能：读取微件运行状态文件
@@ -1021,16 +1196,7 @@ window.isProcessRunning = (processName) => {
  * 返回值：Object | null 状态内容，如 {running, pid, updatedAt, version, stage}
  * 日期：2025-12-01
  */
-window.readWidgetStatus = () => {
-  try {
-    const os = require('os')
-    const path = require('path')
-    const fs = require('fs')
-    const statusPath = path.join(os.homedir(), 'DeskClock', 'status.json')
-    const raw = fs.readFileSync(statusPath, 'utf-8')
-    return JSON.parse(raw)
-  } catch (_) { return null }
-}
+// 已移除：微件运行状态读取
 
 /*
  * 功能：检测微件是否运行（进程+心跳文件）
@@ -1038,14 +1204,7 @@ window.readWidgetStatus = () => {
  * 返回值：Boolean 是否判定为运行中
  * 日期：2025-12-01
  */
-window.isWidgetAlive = () => {
-  try {
-    const status = window.readWidgetStatus()
-    const byProc = window.isProcessRunning('desk-clock-widget.exe') || window.isProcessRunning('deskclockwidget.exe')
-    const byFile = !!(status && status.running && (Date.now() - (status.updatedAt || 0) < 8000))
-    return byProc || byFile
-  } catch (_) { return false }
-}
+// 已移除：微件存活检测
 
 /*
  * 功能：启动微件心跳监测（2s）并在UI上提示连接状态
@@ -1053,21 +1212,7 @@ window.isWidgetAlive = () => {
  * 返回值：无
  * 日期：2025-12-01
  */
-window.startWidgetHeartbeat = () => {
-  if (window.__widgetHeartbeatTimer) return
-  window.__widgetHeartbeatTimer = setInterval(() => {
-    try {
-      const alive = window.isWidgetAlive()
-      const status = window.readWidgetStatus() || {}
-      const text = alive ? `微件已连接 v${status.version || '0.0.0'}` : '微件未连接'
-      const el = document.getElementById('widget-conn-status')
-      if (el) { el.textContent = text; el.style.color = alive ? '#52c41a' : '#ff4d4f' }
-      // 如微件存活且悬浮窗可见则推送数据
-      const st = getFloatingState();
-      if (alive && st && st.visible) window.pushFloatingData()
-    } catch (_) {}
-  }, 2000)
-}
+// 已移除：微件心跳监测
 
 // 监听窗口隐藏事件
 window.utools.onPluginOut(() => {
@@ -1108,32 +1253,33 @@ window.utools.onPluginReady(() => {
   if (appElement) {
     appElement.style.display = 'block';
   }
-  /*
-   * 功能：在插件就绪时根据状态显示悬浮窗
+  /**
+   * 在插件就绪时恢复悬浮窗
+   * 功能：若上次退出前悬浮窗为可见，则自动恢复打开并还原位置
    * 参数：无
    * 返回值：无
-   * 创建日期：2025-12-01
+   * 创建日期：2025-12-08
    */
   const state = getFloatingState();
-  window.__floatingVisible = false;
-  try {
-    const cleared = { ...state, visible: false };
-    window.localStorage.setItem('floatingWindowState', JSON.stringify(cleared));
-  } catch (_) {}
+  window.__floatingVisible = !!(state && state.visible);
   // 初始化按钮文案
   try {
     const btn = document.getElementById('floating-toggle-btn');
-    if (btn) btn.textContent = '显示悬浮窗';
+    if (btn) btn.textContent = window.__floatingVisible ? '隐藏悬浮窗' : '显示悬浮窗';
   } catch (_) {}
+  // 自动恢复悬浮窗
+  if (state && state.visible) {
+    setTimeout(() => {
+      try { window.openFloatingWindow(); } catch (_) {}
+    }, 100);
+  }
   /*
    * 功能：启动桌面微件数据同步
    * 参数：无
    * 返回值：无
    * 创建日期：2025-12-01
-   */
-  startWidgetSyncTimer()
-  // 启动微件心跳监测
-  try { window.startWidgetHeartbeat() } catch (_) {}
+  */
+  // 已移除微件数据同步与心跳监测
 });
 
 // 处理预提醒时间变更
@@ -1418,6 +1564,10 @@ function getRandomColor() {
   
           }
         });
+        
+        // 每次轮询结束后，同步更新悬浮窗数据
+        try { window.pushFloatingData(); } catch (_) {}
+
       }, 5000);
     }
   
@@ -1518,3 +1668,58 @@ window.getGlobalAvatar = () => {
   const config = JSON.parse(window.utools.dbStorage.getItem('globalConfig') || '{}');
   return config.avatar || path.join(window.utools.getPath('userData'), 'touxiang.png');
 };
+/**
+ * 记录窗口边界信息
+ * 功能：输出窗口当前的物理尺寸与内容尺寸，便于定位尺寸膨胀问题
+ * 参数：win - BrowserWindow 实例；tag - 字符串标签用于区分日志位置
+ * 返回值：无
+ * 创建日期：2025-12-08
+ */
+// 已移除调试用尺寸记录函数
+
+/**
+ * 监听来自悬浮窗的日志
+ * 功能：接收悬浮窗通过 IPC 发送过来的日志消息，并在主窗口控制台与文件中输出
+ * 参数：无（使用全局 ipcRenderer 通道）
+ * 返回值：无
+ * 创建日期：2025-12-08
+ */
+// 移除悬浮窗日志代理监听，减负
+
+/**
+ * 监听悬浮窗操作通道（仅记录日志）
+ * 功能：接收悬浮窗通过 'widget-action' 通道发送的移动请求，主窗口仅记录收到的参数和窗口当前尺寸，不改变现有移动逻辑
+ * 参数：无
+ * 返回值：无
+ * 创建日期：2025-12-08
+ */
+try {
+  ipcRenderer.on('widget-action', (event, action) => {
+    try {
+      // 仅处理移动，不输出调试日志
+    } catch (_) {}
+
+    // 记录当前悬浮窗尺寸（如果可用）
+    try {
+      const win = window.floatingWin;
+      if (win && !win.isDestroyed()) {
+        // 若为移动请求，统一在主进程执行并锁定内容尺寸 300x45
+        try {
+          if (action && action.type === 'move') {
+            const x = Math.round(action.x);
+            const y = Math.round(action.y);
+            // 使用内容边界，避免物理边界随非客户区变化
+            try {
+              win.setContentBounds({ x, y, width: 300, height: 45 });
+            } catch (e) {
+              // 兜底：若 setContentBounds 不可用，退回 setBounds
+              win.setBounds({ x, y, width: 300, height: 45 });
+            }
+          }
+        } catch (_) {}
+      } else {
+        window.logger.log('[悬浮窗] main-recv: 无有效窗口实例');
+      }
+    } catch (_) {}
+  });
+} catch (_) {}

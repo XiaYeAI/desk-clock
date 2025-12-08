@@ -163,6 +163,23 @@
           </div>
         </div>
         
+        <div class="form-input">
+          <label>悬浮窗</label>
+          <div style="display: flex; flex-direction: column; gap: 10px;">
+            <div style="display: flex; gap: 10px; align-items: center;">
+              <button class="alert-button primary" onclick="if(window.openFloatingWindow) { window.openFloatingWindow(); }">显示悬浮窗</button>
+              <button class="alert-button secondary" onclick="if(window.closeFloatingWindow) { window.closeFloatingWindow(); }" style="background: #ff4d4f; color: white;">关闭悬浮窗</button>
+            </div>
+            <div style="margin-top: 5px;">
+              <label style="font-size: 14px; margin-bottom: 5px; display: block;">悬浮窗透明度</label>
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <input type="range" id="floating-opacity" min="0.1" max="1.0" step="0.1" style="flex: 1;" onchange="window.handleFloatingOpacityChange(this.value)" oninput="document.getElementById('opacity-value').textContent = this.value">
+                <span id="opacity-value" style="width: 30px; text-align: right;">0.8</span>
+              </div>
+            </div>
+            <small style="color: #666; font-size: 12px;">开启后，桌面将显示当前任务和倒计时的小窗口</small>
+          </div>
+        </div>
 
       </div>
     </div>
@@ -734,7 +751,7 @@
     function initApp() {
       renderTimeline();
       renderTimeBlockList();
-      
+
       // 每分钟刷新一次界面，确保当前任务高亮状态实时更新
       setInterval(() => {
         renderTimeline();

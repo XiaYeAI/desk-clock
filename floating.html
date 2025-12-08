@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        html, body {
+            width: 300px;
+            height: 45px;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+        }
+        body {
+            background: transparent; /* 将圆角承载到内部卡片，避免系统窗口直角遮盖 */
+            color: #FFFFFF;
+            font-family: "Microsoft YaHei", sans-serif;
+            display: flex;
+            flex-direction: row; /* 统一为水平布局 */
+            box-sizing: border-box;
+            user-select: none;
+            transition: opacity 0.2s;
+            position: relative;
+        }
+
+        /* 圆角与渐变在卡片容器上实现，保证视觉圆角生效 */
+        .card {
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, #4F46E5 0%, #06B6D4 100%);
+            border: 1px solid rgba(255, 255, 255, 0.22);
+            border-radius: 12px;
+            box-shadow: 0 8px 20px rgba(6, 182, 212, 0.25);
+            position: relative;
+            overflow: hidden; /* 强制裁剪，确保四角圆角实际可见 */
+        }
+
+        /* 右侧把手指示条：在吸附或隐藏时显示为红色，增强可见性 */
+        .handle-indicator {
+            position: absolute;
+            right: 0;
+            top: 0;
+            bottom: 0;
+            width: 10px; /* 与 PEEK_WIDTH 接近，可视为把手 */
+            border-radius: 0 12px 12px 0;
+            background: transparent;
+            z-index: 2;
+            pointer-events: none;
+        }
+        body.docked .handle-indicator,
+        body.hidden-mode .handle-indicator {
+            background: #EF476F; /* 鲜明红色 */
+            box-shadow: 0 0 8px rgba(239, 71, 111, 0.6);
+        }
+        /* 拖拽区域覆盖全屏，除了交互元素 */
+        .drag-handle {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            cursor: move;
+            z-index: 1;
+            border-radius: 12px; /* 区域与容器保持一致圆角，避免交互覆盖直角 */
+        }
+        
+        .container {
+            position: relative;
+            z-index: 2;
+            padding: 0 10px;
+            display: flex;
+            flex-direction: row;
+            align-items: center;
+            width: 100%;
+            height: 100%;
+            pointer-events: none; /* 让点击穿透到 drag-handle */
+            gap: 10px;
+        }
+
+        .time {
+            font-size: 16px;
+            color: #FFFFFF; /* 统一纯白，保证在渐变两端都有足够对比 */
+            font-weight: 700;
+            white-space: nowrap;
+            line-height: 1;
+            text-shadow: 0 1px 2px rgba(0,0,0,0.35);
+        }
+
+        .task-name {
+            font-size: 16px;
+            font-weight: 600;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            color: #FFFFFF;
+            flex: 1;
+            line-height: 1;
+            text-shadow: 0 1px 2px rgba(0,0,0,0.35);
+        }
+
+        /* 关闭按钮 */
+        .close-btn {
+            position: absolute;
+            right: 0;
+            top: 0;
+            bottom: 0;
+            width: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            color: #FFFFFF;
+            font-size: 18px;
+            z-index: 10;
+            pointer-events: auto;
+        }
+        .close-btn:hover {
+            background: rgba(255,255,255,0.18);
+            color: #EF476F; /* 悬停红色，提升可见性 */
+        }
+
+        /* 贴边隐藏样式 */
+        body.hidden-mode .card {
+            background: rgba(0, 0, 0, 0.9);
+            border-right: none;
+            border-radius: 12px 0 0 12px; /* 贴边隐藏保持圆角一致 */
+        }
+        body.hidden-mode .container {
+            opacity: 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="card">
+      <div class="drag-handle" id="dragArea"></div>
+      <div class="close-btn" id="closeBtn" title="关闭悬浮窗">×</div>
+
+      <div class="handle-indicator"></div>
+
+      <div class="container">
+        <span class="time" id="currentTime">--:--</span>
+        <span class="task-name" id="taskName">暂无任务</span>
+      </div>
+    </div>
+
+
+
+    <script>
+        // 获取 URL 参数中的透明度设置
+        const urlParams = new URLSearchParams(window.location.search);
+        const initialOpacity = parseFloat(urlParams.get('opacity'));
+        if (!isNaN(initialOpacity)) {
+            document.body.style.opacity = initialOpacity;
+        }
+
+        // --- UI 更新逻辑 ---
+        const timeEl = document.getElementById('currentTime');
+        const taskEl = document.getElementById('taskName');
+
+        // 更新时间显示
+        setInterval(() => {
+            const now = new Date();
+            const h = String(now.getHours()).padStart(2, '0');
+            const m = String(now.getMinutes()).padStart(2, '0');
+            timeEl.textContent = `${h}:${m}`;
+        }, 1000);
+
+        // 接收数据更新
+        // 支持两种方式：IPC 消息 和 直接调用
+        function updateData(data) {
+            if (!data) return;
+            
+            // data 结构参考: { currentTaskName, alarms: [...] }
+            // 我们主要展示 currentTaskName 和最近的一个 alarm 的状态
+            
+            if (data.currentTaskName) {
+                taskEl.textContent = data.currentTaskName;
+            } else {
+                // 如果没有正在进行的任务，找下一个
+                // 这里的逻辑可以根据实际需求调整，目前简单展示
+                // 从 alarms 中找
+                if (data.alarms && data.alarms.length > 0) {
+                    // 过滤掉已过去的
+                    const next = data.alarms.find(a => a.remainText && !a.remainText.includes('-')); // 简单判断
+                    if (next) {
+                        taskEl.textContent = next.name;
+                    } else {
+                        taskEl.textContent = '暂无待办';
+                    }
+                } else {
+                    taskEl.textContent = '暂无待办';
+                }
+            }
+        }
+
+        // 从 localStorage 读取数据 (独立于主程序 IPC)
+        function updateFromStorage() {
+            try {
+                const raw = localStorage.getItem('floating_task_data');
+                if (raw) {
+                    const data = JSON.parse(raw);
+                    updateData(data);
+                }
+            } catch (_) {}
+        }
+
+        // 初始读取
+        updateFromStorage();
+        // 定时轮询 localStorage，确保主程序重启后也能获取最新状态
+        setInterval(updateFromStorage, 1000);
+
+        // IPC 监听 (保持实时性)
+        if (window.widgetApi) {
+            window.widgetApi.onMessage((msg) => {
+                if (msg === 'connect') return;
+                if (typeof msg === 'object') {
+                    if (msg.type === 'update-opacity') {
+                        document.body.style.opacity = msg.value;
+                    } else {
+                        updateData(msg);
+                    }
+                }
+            });
+        }
+
+        // 关闭按钮
+        document.getElementById('closeBtn').addEventListener('mousedown', (e) => {
+            e.stopPropagation(); // 防止触发拖拽
+        });
+        document.getElementById('closeBtn').addEventListener('click', () => {
+            if (window.widgetApi && window.widgetApi.close) {
+                window.widgetApi.close();
+            } else {
+                window.close();
+            }
+        });
+
+        // --- 窗口移动与吸附逻辑 ---
+        const dragArea = document.getElementById('dragArea');
+        let isDragging = false;
+        let startX = 0, startY = 0;
+        let initialWinX = 0, initialWinY = 0;
+        
+        const SNAP_THRESHOLD = 50;
+        const PEEK_WIDTH = 10;
+        const HIDE_DELAY = 1000;
+        let hideTimer = null;
+        let isDocked = false;
+        let isHidden = false;
+
+        let lastMoveTime = 0;
+        function moveWindow(x, y) {
+            const now = Date.now();
+            // 简单节流：每 16ms (约 60fps) 响应一次，避免过于频繁的 IPC 调用
+            if (now - lastMoveTime < 16) return;
+            lastMoveTime = now;
+
+            if (window.widgetApi && window.widgetApi.requestMove) {
+                window.widgetApi.requestMove(x, y);
+            } else if (window.widgetApi && window.widgetApi.setBounds) {
+                window.widgetApi.setBounds(x, y);
+            } else {
+                window.moveTo(Math.round(x), Math.round(y));
+            }
+        }
+
+        dragArea.addEventListener('mousedown', (e) => {
+            if (e.button !== 0) return;
+            isDragging = true;
+            startX = e.screenX;
+            startY = e.screenY;
+            initialWinX = window.screenX;
+            initialWinY = window.screenY;
+            
+            clearTimeout(hideTimer);
+            if (isHidden) expandWindow();
+        });
+
+        window.addEventListener('mousemove', (e) => {
+            if (!isDragging) return;
+            const dx = e.screenX - startX;
+            const dy = e.screenY - startY;
+            moveWindow(initialWinX + dx, initialWinY + dy);
+        });
+
+        window.addEventListener('mouseup', () => {
+            if (!isDragging) return;
+            isDragging = false;
+            checkSnap();
+        });
+
+        function checkSnap() {
+            const screenWidth = window.screen.availWidth;
+            const winWidth = 300; // 修复：使用固定宽度替代 outerWidth，避免 Windows 下透明窗口尺寸计算异常
+            const currentX = window.screenX;
+            const distToRight = screenWidth - (currentX + winWidth);
+
+            if (distToRight < SNAP_THRESHOLD) {
+                const targetX = screenWidth - winWidth;
+                moveWindow(targetX, window.screenY);
+                isDocked = true;
+                isHidden = false;
+                // 吸附时增加样式类，使把手可见
+                try { document.body.classList.add('docked'); } catch (_) {}
+                startHideTimer();
+            } else {
+                isDocked = false;
+                // 取消吸附时移除样式类
+                try { document.body.classList.remove('docked'); } catch (_) {}
+            }
+        }
+
+        function startHideTimer() {
+            if (!isDocked) return;
+            clearTimeout(hideTimer);
+            hideTimer = setTimeout(hideWindow, HIDE_DELAY);
+        }
+
+        function hideWindow() {
+            if (!isDocked || isHidden || isDragging) return;
+            const screenWidth = window.screen.availWidth;
+            const targetX = screenWidth - PEEK_WIDTH;
+            moveWindow(targetX, window.screenY);
+            isHidden = true;
+            document.body.classList.add('hidden-mode');
+            // 保持 docked 样式，确保把手在隐藏态仍可见
+            try { document.body.classList.add('docked'); } catch (_) {}
+        }
+
+        function expandWindow() {
+            if (!isHidden) return;
+            const screenWidth = window.screen.availWidth;
+            // 使用固定宽度防止计算错误
+            const winWidth = 300; 
+            const targetX = screenWidth - winWidth;
+            moveWindow(targetX, window.screenY);
+            isHidden = false;
+            document.body.classList.remove('hidden-mode');
+            clearTimeout(hideTimer);
+            // 保持 docked 状态，但若后续移开边缘会在 checkSnap 中移除
+            try { document.body.classList.add('docked'); } catch (_) {}
+        }
+
+        document.body.addEventListener('mouseenter', () => {
+            if (isHidden) expandWindow();
+        });
+        
+        document.body.addEventListener('mouseleave', () => {
+            if (!isHidden && isDocked && !isDragging) {
+                startHideTimer();
+            }
+        });
+    </script>
+</body>
+</html>
