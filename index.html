@@ -21,6 +21,7 @@
       <button class="tab-button active" onclick="switchTab('timeline')">时间轴</button>
       <button class="tab-button" onclick="switchTab('input')">创建时间块</button>
       <button class="tab-button" onclick="switchTab('settings')">参数设置</button>
+      <button class="tab-button" onclick="showQuickAlarmModal()" style="background: #52c41a; color: white; border-color: #52c41a;">⚡ 快速闹钟</button>
     </div>
 
     <div id="timeline-tab" class="tab-content active">
@@ -46,73 +47,92 @@
 
     <div id="input-tab" class="tab-content">
       <div class="input-container">
-        <div class="form-input">
-          <label>任务名称</label>
-          <input type="text" id="task-name" placeholder="输入任务名称">
-        </div>
-        <div class="form-input">
-          <label>时间点</label>
-          <input type="time" id="task-time" value="09:00">
-        </div>
-        <div class="form-input">
-          <label>启用状态</label>
-          <select id="task-enabled">
-            <option value="true">启用</option>
-            <option value="false">禁用</option>
-          </select>
-        </div>
-        <div class="form-input">
-          <label>预提醒</label>
-          <select id="task-pre-alert">
-            <option value="true">启用</option>
-            <option value="false">禁用</option>
-          </select>
-        </div>
-        <div class="form-input">
-          <label>提醒模式</label>
-          <select id="task-reminder-mode" onchange="toggleWeekdaySelector()">
-            <option value="daily">每天提醒</option>
-            <option value="weekly">按星期提醒</option>
-          </select>
-        </div>
-        <div class="form-input" id="weekday-selector" style="display: none;">
-          <label>选择星期</label>
-          <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 5px;">
-            <label style="margin: 0; display: flex; align-items: center; gap: 4px; font-size: 12px;">
-              <input type="checkbox" id="weekday-1" value="1"> 周一
-            </label>
-            <label style="margin: 0; display: flex; align-items: center; gap: 4px; font-size: 12px;">
-              <input type="checkbox" id="weekday-2" value="2"> 周二
-            </label>
-            <label style="margin: 0; display: flex; align-items: center; gap: 4px; font-size: 12px;">
-              <input type="checkbox" id="weekday-3" value="3"> 周三
-            </label>
-            <label style="margin: 0; display: flex; align-items: center; gap: 4px; font-size: 12px;">
-              <input type="checkbox" id="weekday-4" value="4"> 周四
-            </label>
-            <label style="margin: 0; display: flex; align-items: center; gap: 4px; font-size: 12px;">
-              <input type="checkbox" id="weekday-5" value="5"> 周五
-            </label>
-            <label style="margin: 0; display: flex; align-items: center; gap: 4px; font-size: 12px;">
-              <input type="checkbox" id="weekday-6" value="6"> 周六
-            </label>
-            <label style="margin: 0; display: flex; align-items: center; gap: 4px; font-size: 12px;">
-              <input type="checkbox" id="weekday-0" value="0"> 周日
-            </label>
+        <div class="time-form-full-grid">
+          <div class="form-input" style="grid-column: span 2;">
+            <label>任务名称</label>
+            <input type="text" id="task-name" placeholder="输入任务名称">
+            <div id="error-task-name" class="error-message"></div>
           </div>
-          <small style="color: #666; font-size: 12px;">请至少选择一个星期</small>
-        </div>
-        <div class="form-input">
-          <label>提醒次数</label>
-          <div style="display: flex; align-items: center; gap: 10px;">
-            <input type="number" id="task-reminder-count" min="1" max="999" placeholder="输入次数" style="width: 80px; min-width: 60px;">
-            <label style="margin: 0; white-space: nowrap;">
-              <input type="checkbox" id="task-reminder-permanent"> 永久提醒
-            </label>
+          <div class="form-input">
+            <label>时间点</label>
+            <input type="time" id="task-time" value="09:00">
+            <div id="error-task-time" class="error-message"></div>
           </div>
-          <small style="color: #666; font-size: 12px;">永久提醒：每天都会提醒；指定次数：提醒完成后自动禁用</small>
+          
+          <div class="form-input">
+            <label>启用状态</label>
+            <input type="hidden" id="task-enabled" value="true">
+            <div class="button-group">
+              <button class="method-button active" data-value="true" onclick="setButtonGroupValue('task-enabled', 'true', this)">启用</button>
+              <button class="method-button" data-value="false" onclick="setButtonGroupValue('task-enabled', 'false', this)">禁用</button>
+            </div>
+          </div>
+          <div class="form-input">
+            <label>预提醒</label>
+            <input type="hidden" id="task-pre-alert" value="true">
+            <div class="button-group">
+              <button class="method-button active" data-value="true" onclick="setButtonGroupValue('task-pre-alert', 'true', this)">启用</button>
+              <button class="method-button" data-value="false" onclick="setButtonGroupValue('task-pre-alert', 'false', this)">禁用</button>
+            </div>
+          </div>
+          <div class="form-input">
+             <label>提醒次数</label>
+             <div style="display: flex; align-items: center; gap: 10px;">
+               <input type="number" id="task-reminder-count" min="1" max="999" placeholder="输入次数" style="width: 120px; min-width: 60px;">
+               <label style="margin: 0; white-space: nowrap;">
+                 <input type="checkbox" id="task-reminder-permanent"> 永久提醒
+               </label>
+             </div>
+             <small style="color: #666; font-size: 12px; display: block; margin-top: 4px;">永久:每天提醒; 次数:提醒完自动禁用</small>
+             <div id="error-reminder-count" class="error-message"></div>
+          </div>
+
+          <div class="form-input" style="grid-column: 1 / -1;">
+            <label>提醒模式</label>
+            <input type="hidden" id="task-reminder-mode" value="daily">
+            <div class="button-group">
+              <button class="method-button active" data-value="daily" onclick="setButtonGroupValue('task-reminder-mode', 'daily', this)">每天</button>
+              <button class="method-button" data-value="weekly" onclick="setButtonGroupValue('task-reminder-mode', 'weekly', this)">按星期</button>
+            </div>
+            
+            <div id="weekday-selector" style="display: none; margin-top: 10px; padding: 10px; background: #f8f9fa; border-radius: 8px; border: 1px solid #eee;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <label style="margin: 0; font-size: 13px;">选择星期</label>
+                <div style="display: flex; gap: 8px;">
+                  <button type="button" class="tag-button" onclick="selectWeekdays('workday')">工作日</button>
+                  <button type="button" class="tag-button" onclick="selectWeekdays('weekend')">周末</button>
+                </div>
+              </div>
+              <div style="display: flex; flex-wrap: wrap; gap: 12px;">
+                <label style="margin: 0; display: flex; align-items: center; gap: 4px; font-size: 13px; cursor: pointer;">
+                  <input type="checkbox" id="weekday-1" value="1"> 周一
+                </label>
+                <label style="margin: 0; display: flex; align-items: center; gap: 4px; font-size: 13px; cursor: pointer;">
+                  <input type="checkbox" id="weekday-2" value="2"> 周二
+                </label>
+                <label style="margin: 0; display: flex; align-items: center; gap: 4px; font-size: 13px; cursor: pointer;">
+                  <input type="checkbox" id="weekday-3" value="3"> 周三
+                </label>
+                <label style="margin: 0; display: flex; align-items: center; gap: 4px; font-size: 13px; cursor: pointer;">
+                  <input type="checkbox" id="weekday-4" value="4"> 周四
+                </label>
+                <label style="margin: 0; display: flex; align-items: center; gap: 4px; font-size: 13px; cursor: pointer;">
+                  <input type="checkbox" id="weekday-5" value="5"> 周五
+                </label>
+                <label style="margin: 0; display: flex; align-items: center; gap: 4px; font-size: 13px; cursor: pointer;">
+                  <input type="checkbox" id="weekday-6" value="6"> 周六
+                </label>
+                <label style="margin: 0; display: flex; align-items: center; gap: 4px; font-size: 13px; cursor: pointer;">
+                  <input type="checkbox" id="weekday-0" value="0"> 周日
+                </label>
+              </div>
+              <small style="color: #666; font-size: 12px; display: block; margin-top: 8px;">请至少选择一天</small>
+              <div id="error-weekdays" class="error-message"></div>
+            </div>
+          </div>
         </div>
-        <div class="form-actions" style="margin-top: 15px;">
+
+        <div class="form-actions time-form-actions" style="margin-top: 15px;">
           <button class="alert-button primary" onclick="handleFormSubmit()">保存</button>
         </div>
         <div class="time-block-list" id="time-block-list"></div>
@@ -210,9 +230,53 @@
     </div>
   </div>
 
-
+  <div class="alert-overlay" id="quick-alarm-modal">
+    <div class="alert-content">
+      <h3>⚡ 快速闹钟</h3>
+      <div class="form-input">
+        <label>提醒事项</label>
+        <input type="text" id="quick-alarm-name" placeholder="做什么事情？">
+      </div>
+      <div class="form-input">
+        <label>提醒时间</label>
+        <input type="time" id="quick-alarm-time">
+      </div>
+      <div class="alert-actions">
+        <button class="alert-button secondary" onclick="closeQuickAlarmModal()">取消</button>
+        <button class="alert-button primary" onclick="saveQuickAlarm()">确定</button>
+      </div>
+    </div>
+  </div>
 
   <script>
+    // 按钮组值设置辅助函数
+    function setButtonGroupValue(inputId, value, btnElement) {
+      document.getElementById(inputId).value = value;
+      const group = btnElement.parentElement;
+      group.querySelectorAll('.method-button').forEach(btn => btn.classList.remove('active'));
+      btnElement.classList.add('active');
+      
+      if (inputId === 'task-reminder-mode') {
+        toggleWeekdaySelector();
+      }
+    }
+
+    // 更新按钮组视觉状态
+    function updateButtonGroupVisuals(inputId) {
+      const value = document.getElementById(inputId).value;
+      const input = document.getElementById(inputId);
+      const group = input.nextElementSibling;
+      if (group && group.classList.contains('button-group')) {
+         group.querySelectorAll('.method-button').forEach(btn => {
+            if (btn.dataset.value === value) {
+               btn.classList.add('active');
+            } else {
+               btn.classList.remove('active');
+            }
+         });
+      }
+    }
+
     // 显示表单提示
     function showFormAlert(title, message) {
       const overlay = document.getElementById('alert-overlay');
@@ -259,6 +323,103 @@
       }
     }
 
+    // 快捷选择星期
+    function selectWeekdays(type) {
+      // 先清空所有
+      document.querySelectorAll('[id^="weekday-"]').forEach(checkbox => {
+        checkbox.checked = false;
+      });
+
+      if (type === 'workday') {
+        // 选中周一到周五 (1-5)
+        [1, 2, 3, 4, 5].forEach(day => {
+          const checkbox = document.getElementById(`weekday-${day}`);
+          if (checkbox) checkbox.checked = true;
+        });
+      } else if (type === 'weekend') {
+        // 选中周六和周日 (6, 0)
+        [6, 0].forEach(day => {
+          const checkbox = document.getElementById(`weekday-${day}`);
+          if (checkbox) checkbox.checked = true;
+        });
+      }
+    }
+
+    // 快速闹钟相关功能
+    function showQuickAlarmModal() {
+      const modal = document.getElementById('quick-alarm-modal');
+      const timeInput = document.getElementById('quick-alarm-time');
+      const nameInput = document.getElementById('quick-alarm-name');
+      
+      // 设置默认时间为当前时间后30分钟
+      const now = new Date();
+      now.setMinutes(now.getMinutes() + 30);
+      const hours = now.getHours().toString().padStart(2, '0');
+      const minutes = now.getMinutes().toString().padStart(2, '0');
+      
+      timeInput.value = `${hours}:${minutes}`;
+      nameInput.value = '';
+      nameInput.focus();
+      
+      modal.style.display = 'flex';
+    }
+
+    function closeQuickAlarmModal() {
+      document.getElementById('quick-alarm-modal').style.display = 'none';
+    }
+
+    function saveQuickAlarm() {
+      const name = document.getElementById('quick-alarm-name').value.trim();
+      const timeStr = document.getElementById('quick-alarm-time').value;
+      
+      if (!name) {
+        alert('请输入提醒事项');
+        return;
+      }
+      
+      if (!timeStr) {
+        alert('请输入提醒时间');
+        return;
+      }
+      
+      const [hours, minutes] = timeStr.split(':').map(Number);
+      const now = new Date();
+      let targetTime = new Date();
+      targetTime.setHours(hours, minutes, 0, 0);
+      
+      // 如果时间已过，自动设为明天
+      if (targetTime <= now) {
+        targetTime.setDate(targetTime.getDate() + 1);
+      }
+      
+      const newBlock = {
+        id: Date.now().toString(36) + Math.random().toString(36).substr(2),
+        task: name,
+        startTime: targetTime.getTime(),
+        enabled: true,
+        preAlert: false, // 快速闹钟不预提醒
+        reminderMode: 'once', // 单次提醒
+        reminderCount: 1,
+        remainingCount: 1,
+        weekdays: [],
+        color: getRandomColor(),
+        createdAt: Date.now()
+      };
+      
+      const blocks = window.getTimeSettings();
+      blocks.push(newBlock);
+      window.saveTimeSettings(blocks);
+      
+      renderTimeline();
+      renderTimeBlockList();
+      closeQuickAlarmModal();
+      
+      if (window.showToast) {
+        window.showToast('快速闹钟已添加');
+      } else {
+        alert('快速闹钟已添加');
+      }
+    }
 
 
 
@@ -344,6 +505,8 @@
           const weekNames = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
           const selectedDays = weekdays.map(day => weekNames[day]).join('、');
           reminderModeText = `每周(${selectedDays})`;
+        } else if (reminderMode === 'once') {
+          reminderModeText = '单次';
         }
         
         // 构建新的树状时间轴HTML结构
@@ -551,6 +714,7 @@
                   模式：${(() => {
                     const mode = block.reminderMode || 'daily';
                     if (mode === 'daily') return '每日';
+                    if (mode === 'once') return '单次';
                     if (mode === 'weekly') {
                       const weekdays = block.weekdays || [];
                       const weekNames = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
@@ -583,7 +747,9 @@
       document.getElementById('task-name').value = block.task;
       document.getElementById('task-time').value = timeStr;
       document.getElementById('task-enabled').value = block.enabled ? 'true' : 'false';
+      updateButtonGroupVisuals('task-enabled');
       document.getElementById('task-pre-alert').value = block.preAlert ? 'true' : 'false';
+      updateButtonGroupVisuals('task-pre-alert');
       
       // 设置提醒次数
       if (block.reminderCount === -1) {
@@ -597,6 +763,7 @@
       // 设置提醒模式和星期选择
       const reminderMode = block.reminderMode || 'daily';
       document.getElementById('task-reminder-mode').value = reminderMode;
+      updateButtonGroupVisuals('task-reminder-mode');
       
       // 清空所有星期选择
       document.querySelectorAll('[id^="weekday-"]').forEach(checkbox => {
@@ -637,13 +804,57 @@
       if (taskNameInput) taskNameInput.value = '';
       if (taskTimeInput) taskTimeInput.value = '09:00';
       document.getElementById('task-enabled').value = 'true';
+      updateButtonGroupVisuals('task-enabled');
       document.getElementById('task-pre-alert').value = 'true';
+      updateButtonGroupVisuals('task-pre-alert');
       document.getElementById('task-reminder-count').value = '';
       document.getElementById('task-reminder-permanent').checked = false;
     }
 
+    // 显示错误信息
+    function showError(elementId, message) {
+      const errorDiv = document.getElementById('error-' + elementId);
+      let inputId = elementId;
+      
+      if (elementId === 'reminder-count') inputId = 'task-reminder-count';
+      if (elementId === 'weekdays') inputId = 'weekday-selector';
+      
+      const inputEl = document.getElementById(inputId);
+      
+      if (errorDiv) {
+        errorDiv.textContent = message;
+        errorDiv.style.display = 'block';
+      }
+      
+      if (inputEl) {
+        inputEl.classList.add('error');
+        // 添加输入监听以清除错误
+        const clearHandler = function() {
+          if (errorDiv) errorDiv.style.display = 'none';
+          inputEl.classList.remove('error');
+          inputEl.removeEventListener('input', clearHandler);
+          inputEl.removeEventListener('change', clearHandler);
+        };
+        inputEl.addEventListener('input', clearHandler);
+        inputEl.addEventListener('change', clearHandler);
+      }
+    }
+
+    // 清除所有错误
+    function clearErrors() {
+      document.querySelectorAll('.error-message').forEach(div => {
+        div.style.display = 'none';
+        div.textContent = '';
+      });
+      document.querySelectorAll('.form-input input, .form-input select, #weekday-selector').forEach(el => {
+        el.classList.remove('error');
+      });
+    }
+
     // 处理可视化表单提交
     function handleFormSubmit() {
+      clearErrors();
+      
       const taskName = document.getElementById('task-name').value.trim();
       const taskTime = document.getElementById('task-time').value.trim();
       const enabled = document.getElementById('task-enabled').value === 'true';
@@ -652,20 +863,22 @@
       const reminderPermanent = document.getElementById('task-reminder-permanent').checked;
       const reminderMode = document.getElementById('task-reminder-mode').value;
 
+      let hasError = false;
+
       // 表单验证
       if (!taskName) {
-        alert('请输入任务名称');
-        return;
+        showError('task-name', '请输入任务名称');
+        hasError = true;
       }
       if (!taskTime || !/^\d{1,2}:\d{2}$/.test(taskTime)) {
-        alert('请输入正确的时间格式（如：09:00）');
-        return;
+        showError('task-time', '请输入正确的时间格式（如：09:00）');
+        hasError = true;
       }
       
       // 提醒次数验证
       if (!reminderPermanent && (!reminderCount || isNaN(reminderCount) || parseInt(reminderCount) < 1)) {
-        alert('请输入有效的提醒次数（大于0的整数）或选择永久提醒');
-        return;
+        showError('reminder-count', '请输入有效的提醒次数（大于0的整数）或选择永久提醒');
+        hasError = true;
       }
 
       // 星期提醒验证
@@ -673,17 +886,19 @@
       if (reminderMode === 'weekly') {
         const checkedWeekdays = document.querySelectorAll('[id^="weekday-"]:checked');
         if (checkedWeekdays.length === 0) {
-          alert('按星期提醒模式下，请至少选择一个星期');
-          return;
+          showError('weekdays', '按星期提醒模式下，请至少选择一天');
+          hasError = true;
         }
         weekdays = Array.from(checkedWeekdays).map(cb => parseInt(cb.value));
       }
 
       const [hours, minutes] = taskTime.split(':').map(Number);
-      if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) {
-        alert('请输入有效的时间范围（00:00-23:59）');
-        return;
+      if (!hasError && (hours < 0 || hours > 23 || minutes < 0 || minutes > 59)) {
+        showError('task-time', '请输入有效的时间范围（00:00-23:59）');
+        hasError = true;
       }
+
+      if (hasError) return;
 
       const blocks = window.getTimeSettings();
       const newBlock = {
@@ -716,13 +931,17 @@
 
     // 清空表单
     function clearForm() {
+      clearErrors();
       document.getElementById('task-name').value = '';
       document.getElementById('task-time').value = '09:00';
       document.getElementById('task-enabled').value = 'true';
+      updateButtonGroupVisuals('task-enabled');
       document.getElementById('task-pre-alert').value = 'true';
+      updateButtonGroupVisuals('task-pre-alert');
       document.getElementById('task-reminder-count').value = '';
       document.getElementById('task-reminder-permanent').checked = false;
       document.getElementById('task-reminder-mode').value = 'daily';
+      updateButtonGroupVisuals('task-reminder-mode');
       document.querySelectorAll('[id^="weekday-"]').forEach(checkbox => {
         checkbox.checked = false;
       });
@@ -762,6 +981,25 @@
     // 页面加载完成后初始化
     document.addEventListener('DOMContentLoaded', () => {
       document.getElementById('app').style.display = 'block';
+
+      // 监听提醒次数输入，如果有输入则自动取消永久提醒
+      const reminderCountInput = document.getElementById('task-reminder-count');
+      const reminderPermanentCheckbox = document.getElementById('task-reminder-permanent');
+
+      if (reminderCountInput && reminderPermanentCheckbox) {
+        reminderCountInput.addEventListener('input', function() {
+          if (this.value) {
+            reminderPermanentCheckbox.checked = false;
+          }
+        });
+
+        reminderPermanentCheckbox.addEventListener('change', function() {
+          if (this.checked) {
+            reminderCountInput.value = '';
+          }
+        });
+      }
+
       // 添加调试信息（安全检查日志管理器是否已加载）
       const logger = window.logger || { log: console.log.bind(console), error: console.error.bind(console) };
       logger.log('DOM加载完成');
