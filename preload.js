@@ -549,7 +549,11 @@ window.sendPopupNotification = (title, body) => {
     window.logger.log('[通知] 处理后的头像URL:', avatarUrl);
     // 显示窗口并设置置顶
     win.show();
-    win.setAlwaysOnTop(true);
+    try {
+      win.setAlwaysOnTop(true, 'screen-saver');
+    } catch (_) {
+      try { win.setAlwaysOnTop(true); } catch (_) {}
+    }
 
     // 通过executeJavaScript注入通知内容
     win.webContents.executeJavaScript(`
@@ -705,7 +709,11 @@ window.openFloatingWindow = () => {
         setTimeout(() => {
           try {
             if (!window.floatingWin || window.floatingWin.isDestroyed()) return;
-            window.floatingWin.setAlwaysOnTop(true);
+            try {
+              window.floatingWin.setAlwaysOnTop(true, 'screen-saver');
+            } catch (_) {
+              try { window.floatingWin.setAlwaysOnTop(true); } catch (_) {}
+            }
 
             const settings = window.utools.dbStorage.getItem('globalSettings') || {};
             let opacity = parseFloat(settings.floatingOpacity);
@@ -815,7 +823,11 @@ window.openFloatingWindow = () => {
               } else {
                 win.show();
               }
-              try { win.setAlwaysOnTop(true); } catch (_) {}
+              try {
+                win.setAlwaysOnTop(true, 'screen-saver');
+              } catch (_) {
+                try { win.setAlwaysOnTop(true); } catch (_) {}
+              }
               try { window.logger.log(`[悬浮窗] open: 新窗口已显示，透明度=${opacity}`); } catch (_) {}
             }, 100);
           } catch (e) {
