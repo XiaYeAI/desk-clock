@@ -284,6 +284,27 @@ body {
   gap: 12px;
 }
 
+.timeline-actions {
+  margin-left: auto;
+  padding-left: 8px;
+  pointer-events: auto;
+}
+
+.timeline-delete-button {
+  padding: 4px 10px;
+  border: none;
+  border-radius: 4px;
+  background: #ff4d4f;
+  color: #fff;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.timeline-delete-button:hover {
+  background: #ff7875;
+}
+
 /* 颜色指示器 */
 .timeline-color-indicator {
   width: 4px;

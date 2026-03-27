@@ -602,6 +602,8 @@ window.sendNotification = (title, body) => {
 if (typeof window.__floatingVisible === 'undefined') window.__floatingVisible = false;
 if (typeof window.__floatingOpening === 'undefined') window.__floatingOpening = false;
 if (typeof window.__floatingWindows === 'undefined') window.__floatingWindows = [];
+const FLOATING_WINDOW_WIDTH = 360;
+const FLOATING_WINDOW_HEIGHT = 45;
 
 // 监听来自悬浮窗的操作请求（如移动窗口）
 ipcRenderer.on('widget-action', (event, action) => {
@@ -677,8 +679,8 @@ window.openFloatingWindow = () => {
         const st = getFloatingState();
         if (st && typeof st.x === 'number' && typeof st.y === 'number') {
           try {
-            const width = 300;
-            const height = 45;
+            const width = FLOATING_WINDOW_WIDTH;
+            const height = FLOATING_WINDOW_HEIGHT;
             const screenWidth = (window.screen && window.screen.width) || 1920;
             const screenHeight = (window.screen && window.screen.height) || 1080;
             let nx = st.x;
@@ -757,8 +759,8 @@ window.openFloatingWindow = () => {
     try { window.logger.log(`[悬浮窗] open: 准备创建，透明度=${opacity}`); } catch (_) {}
 
     const win = window.utools.createBrowserWindow(floatingPath, {
-      width: 300,
-      height: 45,
+      width: FLOATING_WINDOW_WIDTH,
+      height: FLOATING_WINDOW_HEIGHT,
       frame: false,
       resizable: false,
       transparent: true,
@@ -787,8 +789,8 @@ window.openFloatingWindow = () => {
           if (!win || win.isDestroyed()) return;
           try {
             // 位置恢复或居中
-            const width = 300;
-            const height = 45;
+            const width = FLOATING_WINDOW_WIDTH;
+            const height = FLOATING_WINDOW_HEIGHT;
             const screenWidth = (window.screen && window.screen.width) || 1920;
             const screenHeight = (window.screen && window.screen.height) || 1080;
 
@@ -885,8 +887,8 @@ window.openFloatingWindow = () => {
                 win.setBounds({
                   x: Math.round(x),
                   y: Math.round(y),
-                  width: 300,
-                  height: 45
+                  width: FLOATING_WINDOW_WIDTH,
+                  height: FLOATING_WINDOW_HEIGHT
                 });
               } catch (_) {}
             }
@@ -1030,7 +1032,11 @@ window.pushFloatingData = () => {
       statusText: b.statusText,
       isCurrent: !!b.isCurrent
     }));
-    const payload = { alarms, currentTaskName: snapshot.currentTaskBlock ? snapshot.currentTaskBlock.task : '' };
+    const payload = {
+      alarms,
+      currentTaskName: snapshot.currentTaskBlock ? snapshot.currentTaskBlock.task : '',
+      currentTaskRemainingText: snapshot.currentTaskRemainingText || ''
+    };
     
     try {
         localStorage.setItem('floating_task_data', JSON.stringify(payload));
@@ -1081,6 +1087,56 @@ window.broadcastCloseFloatingWindows = () => {
  * 返回值：{ nowMinutes, currentTaskBlock, nextTaskBlock, blocks: Array }
  * 创建日期：2025-12-01
  */
+function formatFloatingRemainingText(diffMinutes) {
+  const safeMinutes = Math.max(0, diffMinutes);
+  const hours = Math.floor(safeMinutes / 60);
+  const minutes = safeMinutes % 60;
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+}
+
+function getNextOccurrenceDate(block, now) {
+  if (!block) return null;
+
+  const enabled = (block.enabled === true) || (typeof block.enabled === 'string' && block.enabled.toLowerCase() === 'true');
+  if (!enabled) return null;
+
+  const blockDate = new Date(block.startTime);
+  const mode = block.reminderMode || 'daily';
+
+  if (mode === 'once') {
+    return blockDate.getTime() > now.getTime() ? blockDate : null;
+  }
+
+  const baseHour = blockDate.getHours();
+  const baseMinute = blockDate.getMinutes();
+
+  if (mode === 'daily') {
+    const candidate = new Date(now);
+    candidate.setSeconds(0, 0);
+    candidate.setHours(baseHour, baseMinute, 0, 0);
+    if (candidate.getTime() <= now.getTime()) {
+      candidate.setDate(candidate.getDate() + 1);
+    }
+    return candidate;
+  }
+
+  if (mode === 'weekly') {
+    const weekdays = Array.isArray(block.weekdays) ? block.weekdays : [];
+    if (weekdays.length === 0) return null;
+
+    for (let offset = 0; offset <= 7; offset++) {
+      const candidate = new Date(now);
+      candidate.setSeconds(0, 0);
+      candidate.setDate(now.getDate() + offset);
+      candidate.setHours(baseHour, baseMinute, 0, 0);
+      if (!weekdays.includes(candidate.getDay())) continue;
+      if (candidate.getTime() > now.getTime()) return candidate;
+    }
+  }
+
+  return null;
+}
+
 function getTimelineSnapshot() {
   const settings = window.utools.dbStorage.getItem('globalSettings') || { globalAlertEnabled: true };
   const blocks = window.getTimeSettings();
@@ -1178,8 +1234,24 @@ function getTimelineSnapshot() {
     };
   }).sort((a, b) => a.sortKey - b.sortKey);
 
+  let currentTaskRemainingText = '';
+  if (currentTaskBlock) {
+    const upcomingDates = blocks
+      .map(block => getNextOccurrenceDate(block, now))
+      .filter(date => date && date.getTime() > now.getTime())
+      .sort((a, b) => a.getTime() - b.getTime());
+
+    const nextOccurrence = upcomingDates.length > 0 ? upcomingDates[0] : null;
+    if (nextOccurrence) {
+      const diffMinutes = Math.max(0, Math.ceil((nextOccurrence.getTime() - now.getTime()) / 60000));
+      currentTaskRemainingText = formatFloatingRemainingText(diffMinutes);
+    } else {
+      currentTaskRemainingText = '进行中';
+    }
+  }
+
   // try { if (window.logger && window.logger.log) window.logger.log(`[悬浮窗] snapshot: now=${now.getHours()}:${now.getMinutes()}, enabledToday=${enabledTodayBlocks.length}, past=${pastBlocks.length}, future=${futureBlocks.length}, current=${currentTaskBlock ? currentTaskBlock.task : '无'}`); } catch (_) {}
-  return { nowMinutes, currentTaskBlock, nextTaskBlock, blocks: normalized };
+  return { nowMinutes, currentTaskBlock, nextTaskBlock, currentTaskRemainingText, blocks: normalized };
 }
 
 /*
@@ -1810,10 +1882,10 @@ try {
             const y = Math.round(action.y);
             // 使用内容边界，避免物理边界随非客户区变化
             try {
-              win.setContentBounds({ x, y, width: 300, height: 45 });
+              win.setContentBounds({ x, y, width: FLOATING_WINDOW_WIDTH, height: FLOATING_WINDOW_HEIGHT });
             } catch (e) {
               // 兜底：若 setContentBounds 不可用，退回 setBounds
-              win.setBounds({ x, y, width: 300, height: 45 });
+              win.setBounds({ x, y, width: FLOATING_WINDOW_WIDTH, height: FLOATING_WINDOW_HEIGHT });
             }
           }
         } catch (_) {}

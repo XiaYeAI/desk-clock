@@ -197,7 +197,7 @@
                 <span id="opacity-value" style="width: 30px; text-align: right;">0.8</span>
               </div>
             </div>
-            <small style="color: #666; font-size: 12px;">开启后，桌面将显示当前任务和倒计时的小窗口</small>
+            <small style="color: #666; font-size: 12px;">开启后，桌面会显示悬浮窗，前面是倒计时，后面是任务名。</small>
           </div>
         </div>
 
@@ -526,6 +526,9 @@
                </div>
                ${isCurrentTask ? '<div class="timeline-current-indicator">🔥 进行中</div>' : ''}
              </div>
+             <div class="timeline-actions">
+               <button class="timeline-delete-button" onclick="event.stopPropagation(); removeTimeBlock('${block.id}')">删除</button>
+             </div>
            </div>
          `;
         
@@ -789,6 +792,13 @@
 
     // 删除时间块
     function removeTimeBlock(id) {
+      const timeBlocks = window.getTimeSettings();
+      const block = timeBlocks.find(b => b.id === id);
+      const blockName = block && block.task ? `"${block.task}"` : '该时间块';
+      if (!window.confirm(`确认删除 ${blockName} 吗？`)) {
+        return;
+      }
+
       // 删除数据并更新界面
       window.deleteTimeBlock(id);
       

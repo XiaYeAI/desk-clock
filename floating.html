@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
         html, body {
-            width: 300px;
+            width: 360px;
             height: 45px;
             margin: 0;
             padding: 0;
@@ -67,14 +67,14 @@
         .container {
             position: relative;
             z-index: 2;
-            padding: 0 10px;
+            padding: 0 42px 0 12px;
             display: flex;
             flex-direction: row;
             align-items: center;
             width: 100%;
             height: 100%;
             pointer-events: none; /* 让点击穿透到 drag-handle */
-            gap: 10px;
+            gap: 4px;
         }
 
         .time {
@@ -84,6 +84,7 @@
             white-space: nowrap;
             line-height: 1;
             text-shadow: 0 1px 2px rgba(0,0,0,0.35);
+            flex-shrink: 0;
         }
 
         .task-name {
@@ -94,6 +95,7 @@
             text-overflow: ellipsis;
             color: #FFFFFF;
             flex: 1;
+            min-width: 0;
             line-height: 1;
             text-shadow: 0 1px 2px rgba(0,0,0,0.35);
         }
@@ -138,7 +140,7 @@
       <div class="handle-indicator"></div>
 
       <div class="container">
-        <span class="time" id="currentTime">--:--</span>
+        <span class="time" id="currentTime">T---:--</span>
         <span class="task-name" id="taskName">暂无任务</span>
       </div>
     </div>
@@ -157,40 +159,19 @@
         const timeEl = document.getElementById('currentTime');
         const taskEl = document.getElementById('taskName');
 
-        // 更新时间显示
-        setInterval(() => {
-            const now = new Date();
-            const h = String(now.getHours()).padStart(2, '0');
-            const m = String(now.getMinutes()).padStart(2, '0');
-            timeEl.textContent = `${h}:${m}`;
-        }, 1000);
-
         // 接收数据更新
         // 支持两种方式：IPC 消息 和 直接调用
         function updateData(data) {
             if (!data) return;
             
-            // data 结构参考: { currentTaskName, alarms: [...] }
-            // 我们主要展示 currentTaskName 和最近的一个 alarm 的状态
-            
             if (data.currentTaskName) {
                 taskEl.textContent = data.currentTaskName;
-            } else {
-                // 如果没有正在进行的任务，找下一个
-                // 这里的逻辑可以根据实际需求调整，目前简单展示
-                // 从 alarms 中找
-                if (data.alarms && data.alarms.length > 0) {
-                    // 过滤掉已过去的
-                    const next = data.alarms.find(a => a.remainText && !a.remainText.includes('-')); // 简单判断
-                    if (next) {
-                        taskEl.textContent = next.name;
-                    } else {
-                        taskEl.textContent = '暂无待办';
-                    }
-                } else {
-                    taskEl.textContent = '暂无待办';
-                }
+                timeEl.textContent = `T-${data.currentTaskRemainingText || '--:--'}`;
+                return;
             }
+
+            taskEl.textContent = '暂无任务';
+            timeEl.textContent = 'T---:--';
         }
 
         // 从 localStorage 读取数据 (独立于主程序 IPC)
@@ -291,7 +272,7 @@
 
         function checkSnap() {
             const screenWidth = window.screen.availWidth;
-            const winWidth = 300; // 修复：使用固定宽度替代 outerWidth，避免 Windows 下透明窗口尺寸计算异常
+            const winWidth = 360; // 修复：使用固定宽度替代 outerWidth，避免 Windows 下透明窗口尺寸计算异常
             const currentX = window.screenX;
             const distToRight = screenWidth - (currentX + winWidth);
 
@@ -331,7 +312,7 @@
             if (!isHidden) return;
             const screenWidth = window.screen.availWidth;
             // 使用固定宽度防止计算错误
-            const winWidth = 300; 
+            const winWidth = 360; 
             const targetX = screenWidth - winWidth;
             moveWindow(targetX, window.screenY);
             isHidden = false;
